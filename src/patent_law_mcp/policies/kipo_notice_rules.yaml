@@ -1,0 +1,53 @@
+# 지식재산처 및 공공특허 기술이전·처분 실무 행정규칙 정책 테이블
+# 법령 및 고시가 개정될 경우, 파이썬 코드를 수정할 필요 없이 본 파일의 수치와 조항만 갱신하면 MCP 전반에 즉시 반영됩니다.
+
+metadata:
+  notice_name: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령"
+  notice_id: "지식재산처고시 제2025-4호"
+  effective_date: "2025-10-30"
+  governing_law: "발명진흥법 제15조 및 공무원 직무발명의 처분·관리 및 보상 등에 관한 규정(대통령령)"
+
+# 제3조 및 제7조: 미활용 국유특허 무상실시 및 중소기업 재계약 우대
+unutilized_free_license:
+  unutilized_years_threshold: 3      # 등록 후 미활용 판정 기준 (연)
+  max_free_license_years: 3          # 최대 무상실시 보장 기간 (연)
+  allow_free_extension: false        # 3년 초과 시 무상 연장 불가 (유상 전환 필수)
+  sme_renewal_discount_rate: 0.02    # 중소기업 재계약 시 실시료 산정 기본율 인하폭 (2%p)
+  joint_patentee_written_consent_required: true  # 민간 공동권리자 서면 동의서 필수 여부 (제4조 제4항)
+
+# 제9조: 전용실시 최소실시료 및 납부 기한 강행규정
+exclusive_licensing:
+  minimum_royalty_amount: 3000000    # 전용실시 최소실시료 하한선 (300만 원)
+  payment_deadline_days: 60          # 계약 체결일로부터 납부 기한 (일)
+  exclusive_lump_sum_multiplier: 2.5 # 통상실시 대비 선급기술료 배율
+  exclusive_running_multiplier: 1.5  # 통상실시 대비 경상기술료 배율
+  standard_rates_by_scale:
+    farmer:
+      lump_sum: 0
+      running_rate: 0.000
+      description: "농업인 및 소상공인 무상실시 대상 (고시 제3조)"
+    sme:
+      lump_sum: 3000000
+      running_rate: 0.015
+      description: "중소기업 기준 우대 요율 (경상 1.5%~2.0%)"
+    middle:
+      lump_sum: 10000000
+      running_rate: 0.025
+      description: "중견기업 기준 요율 (경상 2.5%)"
+    large:
+      lump_sum: 30000000
+      running_rate: 0.040
+      description: "대기업 기준 요율 (경상 4.0%)"
+
+# 제10조: 전용실시계약 갱신 요건
+exclusive_renewal:
+  application_deadline_days_before_expiry: 30  # 만료 전 신청 기한 (일)
+  statutory_grounds_count: 5                   # 법정 갱신 사유 개수 (투자금 미회수, 인허가 등)
+
+# 제11조 및 소득세법 제12조: 처분보상금 산정 및 비과세 한도
+disposal_compensation:
+  net_income_payout_ratio: 0.50                # 직접비용 공제 후 순수입금 대비 보상금 비율 (50%)
+  tax_free_limit_annual: 7000000               # 소득세법상 직무발명보상금 비과세 한도 (연간 700만 원)
+  mandatory_deductions:
+    - "특허 등록 및 유지 관납료"
+    - "기술이전 중개 수수료 및 가치평가 직접비용"
