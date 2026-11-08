@@ -95,9 +95,12 @@ def test_summary_skips_deleted_and_dependent_claims():
 
 
 def test_ground_summary_figures():
-    r = ground_summary_figures("기존 대비 30% 절감되고 수율이 2배 향상된다.", "본 발명은 수율을 2배 향상시킨다.")
-    assert r["removed_figures"] == ["30%"] and r["kept_figures"] == ["2배"]
-    assert "30%" not in r["sanitized_text"] and "2배" in r["sanitized_text"]
+    # 업스트림 규칙: 근거 없는 수치가 있는 문장은 통째로 '추가 검증 필요' 문장으로 바꾸고, 근거 있는 문장은 그대로 둔다
+    r = ground_summary_figures("에너지를 30% 절감한다. 수율이 2배 향상된다.", "본 발명은 수율을 2배 향상시킨다.")
+    assert r["removed_figures"] == ["30%"]
+    assert "에너지 관련 효과는 원문에 정량 근거가 없어 추가 검증이 필요하다." in r["sanitized_text"]
+    assert "수율이 2배 향상된다." in r["sanitized_text"]
+    assert r["scope"] == "전체 텍스트"
 
 
 def test_trl_requires_evidence():

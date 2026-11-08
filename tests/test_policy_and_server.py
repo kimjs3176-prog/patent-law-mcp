@@ -48,7 +48,7 @@ EXPECTED_TOOLS = {
     "design_licensing_terms", "review_licensing_contract", "process_invention_disclosure",
     "calculate_disposal_compensation", "evaluate_unutilized_free_license", "evaluate_exclusive_renewal",
     "get_policy_table", "verify_tech_transfer_scope_match", "bundle_patents_for_transfer",
-    "find_target_licensees_by_patent",
+    "find_target_licensees_by_patent", "ground_patent_applications",
 }
 
 

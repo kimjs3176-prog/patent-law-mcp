@@ -7,7 +7,7 @@
 import re
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from patent_law_mcp.tools.claim_utils import (
     detect_technology_kind,
@@ -17,62 +17,100 @@ from patent_law_mcp.tools.claim_utils import (
     split_claim_elements,
     TECH_TYPE_LABELS,
 )
+from patent_law_mcp.upstream import application_grounding, summary_grounding, trl_consistency
+from patent_law_mcp.upstream.video_signature import recommend_video_signature
 
 
-class GroundingCorrector:
-    """원문에 없는 '효과 수치'를 정성적 표현으로 바꾸는 결정론적 보정기"""
+_FIGURE_TOKEN_RE = re.compile(r"[0-9]+(?:[.,][0-9]+)*(?:\s*[~∼～〜\-–]\s*[0-9]+(?:[.,][0-9]+)*)?\s*(?:%|배|시간|분|초|일|개월|년|회|원|kWh|킬로와트시)")
 
-    EFFECT_VERBS = r"(?:절감|감소|감축|저감|향상|증가|증대|개선|단축|방지|억제|줄|높|낮|늘|상승|하락|제고|축소|완화|경감)"
-    NUM = r"\d+(?:[.,]\d+)*"
-    RANGE = rf"{NUM}(?:\s*[~∼～〜\-–]\s*{NUM})?"
-    QUALIFIER = r"(?:이상|이하|가량|내외|정도|수준|까지|가까이|남짓)"
 
-    EFFECT_FIGURE_RE = re.compile(
-        rf"(?:(?:기존|종전|관행|일반)\s*(?:[가-힣]{{1,6}}\s*)?대비\s*)?(?:약\s*|최대\s*|평균\s*)?({RANGE})\s*(%|배)\s*{QUALIFIER}?\s*(?:의\s*)?(?=\**\s*{EFFECT_VERBS})",
-    )
+def _figure_tokens(text: str) -> List[str]:
+    return [re.sub(r"\s+", "", t) for t in _FIGURE_TOKEN_RE.findall(text)]
 
-    @staticmethod
-    def _norm(text: str) -> str:
-        text = re.sub(r"[∼～〜\-–]", "~", text or "")
-        return re.sub(r"[\s,]", "", text)
 
-    @classmethod
-    def check(cls, summary_text: str, source_text: str) -> Dict[str, Any]:
-        source_norm = cls._norm(source_text)
-        removed: List[str] = []
-        kept: List[str] = []
-
-        def replacer(match: re.Match) -> str:
-            figure, unit = match.group(1), match.group(2)
-            if cls._norm(figure + unit) in source_norm:
-                kept.append(f"{figure}{unit}")
-                return match.group(0)
-            removed.append(f"{figure}{unit}")
-            return "유의미한 수준으로 " if unit == "%" else "상당한 수준으로 "
-
-        sanitized = cls.EFFECT_FIGURE_RE.sub(replacer, summary_text)
-        return {"sanitized_text": re.sub(r" {2,}", " ", sanitized), "removed_figures": removed, "kept_figures": kept}
-
-    @classmethod
-    def sanitize_unverified_figures(cls, summary_text: str, source_text: str) -> str:
-        return cls.check(summary_text, source_text)["sanitized_text"]
+SectionMode = Literal["auto", "sections_only", "whole_text"]
 
 
 def ground_summary_figures(
     summary_text: Annotated[str, Field(min_length=1)],
     source_text: Annotated[str, Field(min_length=1)],
+    section_mode: SectionMode = "auto",
 ) -> Dict[str, Any]:
-    """LLM 등이 작성한 요약문에서 원문에 없는 효과 수치(예: '30% 절감', '2배 향상')를 찾아 정성적 표현으로 바꿉니다.
+    """작성된 요약문에서 원문에 없는 효과 수치('30% 절감', '2배 향상', '3시간 단축', '99% 이상의 신뢰도' 등)를 찾아,
+    해당 문장을 '원문에 정량 근거가 없어 추가 검증이 필요하다'로 바꿉니다. (patent-summary-wizard summaryGrounding 포팅)
+
+    원문의 같은 지표 문장에 같은 수치가 있을 때만 수치를 남깁니다 (성분 농도 등 다른 맥락의 같은 숫자는 근거로 보지 않음).
 
     Args:
         summary_text: 점검할 요약문
-        source_text: 대조할 특허 원문(초록·청구항·명세서)
+        source_text: 대조할 특허 원문 (초록·청구항·명세서)
+        section_mode: "auto"(요약문에 '## 발명요약' 같은 제목이 있으면 그 섹션만, 없으면 전체),
+            "sections_only"(업스트림과 같이 기술분야·발명요약·농산업활용·상용화전망 섹션만), "whole_text"(전체)
     """
-    result = GroundingCorrector.check(summary_text, source_text)
-    result["note"] = (
-        "'수치 + %/배 + 효과 동사' 형태만 점검합니다. 다른 형태의 수치나 정성적 과장 표현은 사람이 확인해야 합니다."
-    )
-    return result
+    has_sections = bool(summary_grounding.EFFECT_SECTION_RE.search(summary_text))
+    whole = section_mode == "whole_text" or (section_mode == "auto" and not has_sections)
+    src = summary_grounding.GroundingSource(description=source_text)
+    if whole:
+        wrapped = f"## 발명요약\n{summary_text}"
+        sanitized = summary_grounding.strip_unsupported_effect_figures(wrapped, src)[len("## 발명요약\n"):]
+    else:
+        sanitized = summary_grounding.strip_unsupported_effect_figures(summary_text, src)
+
+    before, after = _figure_tokens(summary_text), _figure_tokens(sanitized)
+    removed = list(before)
+    for t in after:
+        if t in removed:
+            removed.remove(t)
+    return {
+        "sanitized_text": sanitized,
+        "changed": sanitized != summary_text,
+        "removed_figures": removed,
+        "scope": "전체 텍스트" if whole else "기술분야·발명요약·농산업활용·상용화전망 섹션",
+        "upstream": "patent-summary-wizard summaryGrounding.ts",
+    }
+
+
+class ProposedApplication(BaseModel):
+    kind: Literal["청구항", "명세서"] = Field(..., description="제안 근거: 청구항 또는 명세서")
+    label: str = Field(..., description="용도명 (발췌에 그대로 나오는 짧은 명사구)")
+    evidence: str = Field(..., description="원문 연속 발췌 15~200자 (요약·재작성 금지)")
+
+
+def ground_patent_applications(
+    applications: Annotated[List[ProposedApplication], Field(min_length=1)],
+    claims: List[str],
+    abstract: str = "",
+    description: str = "",
+) -> Dict[str, Any]:
+    """제안된 활용 용도마다 원문 발췌를 대조해 '청구항 명시 용도'·'명세서 일반 용도'·'근거 미확인'으로 분류합니다.
+    (patent-summary-wizard applicationGrounding 포팅)
+
+    청구항에 용도가 직접 적혀 있고 발췌가 청구항 원문과 일치할 때만 청구항 명시 용도로 인정합니다.
+
+    Args:
+        applications: 제안 용도 목록 [{kind, label, evidence}]
+        claims: 청구항 원문 목록
+        abstract: 초록
+        description: 명세서 본문
+    """
+    items = [a if isinstance(a, ProposedApplication) else ProposedApplication.model_validate(a) for a in applications]
+    src = summary_grounding.GroundingSource(abstract=abstract, claims=claims, description=description)
+    results = []
+    for a in items:
+        grounded = application_grounding.ground_applications(f"[[용도|{a.kind}|{a.label}|{a.evidence}]]", src)
+        hit = grounded["applications"][0] if grounded["applications"] else None
+        results.append({
+            "label": a.label,
+            "proposed_as": a.kind,
+            "verdict": ("청구항 명시 용도" if hit["claimed_in_claims"] else "명세서 일반 용도") if hit else "근거 미확인",
+            "claimed_in_claims": bool(hit and hit["claimed_in_claims"]),
+            "evidence": a.evidence,
+        })
+    return {
+        "applications": results,
+        "rule": "청구항 명시는 법적 권리범위 확정이나 등록·실시 보장을 뜻하지 않습니다.",
+        "upstream": "patent-summary-wizard applicationGrounding.ts",
+    }
 
 
 _RANGE = r"\d+(?:\.\d+)?(?:\s*[~∼～\-]\s*\d+(?:\.\d+)?)?"
@@ -120,7 +158,7 @@ def _extract_effect(abstract: str, description: str) -> Optional[str]:
     if effect_section:
         return " ".join(_sentences(effect_section)[:2]) or effect_section[:200]
 
-    verb_re = re.compile(GroundingCorrector.EFFECT_VERBS)
+    verb_re = re.compile(summary_grounding.EFFECT_VERB)
     for text in (description, abstract):
         hits = [s for s in _sentences(text) if "효과" in s or verb_re.search(s)]
         if hits:
@@ -208,6 +246,7 @@ def summarize_patent(
             "independent": len(independent),
         },
         "elevator_pitch_draft": pitch,
+        "video_signature_hint": recommend_video_signature(title, clean_claims, abstract),
         "warnings": warnings,
         "notice": "원문 문장을 발췌·재배열한 자동 초안입니다. 대외 배포 전 원문과 대조하십시오.",
     }
@@ -215,13 +254,18 @@ def summarize_patent(
 
 EvidenceLevel = Literal["unknown", "concept", "lab_validated", "prototype", "field_validated", "commercial"]
 
+# 근거 수준 -> TRL 범위 (patent-summary-wizard TRL_REFERENCE_LEVELS 용어 기준)
 _TRL_BY_EVIDENCE = {
-    "concept": ("TRL 1~3", "기초 원리·개념 수준 (실험 검증 전)"),
-    "lab_validated": ("TRL 3~4", "실험실 규모 성능 검증"),
-    "prototype": ("TRL 5~6", "시제품 제작 및 유사 환경 성능 검증"),
-    "field_validated": ("TRL 7", "실제 운용 환경(현장) 실증 완료"),
-    "commercial": ("TRL 8~9", "제품화·양산 또는 판매 실적 보유"),
+    "concept": (2, 3, "기술개념 정립~개념 실증 (실험 검증 전)"),
+    "lab_validated": (3, 4, "연구실 규모 기본·핵심성능 검증"),
+    "prototype": (5, 6, "시작품 제작·파일럿 규모 성능 평가"),
+    "field_validated": (7, 7, "실사용 환경 신뢰성 검증·수요처 평가"),
+    "commercial": (8, 9, "인증·표준화 또는 양산·판매"),
 }
+
+
+def _trl_range(lo: int, hi: int) -> str:
+    return f"TRL {lo}" if lo == hi else f"TRL {lo}~{hi}"
 
 
 def evaluate_commercialization(
@@ -229,38 +273,78 @@ def evaluate_commercialization(
     evidence_level: EvidenceLevel = "unknown",
     target_market: Optional[str] = None,
     evidence_note: Optional[str] = None,
+    commercialization_outlook: Optional[str] = None,
+    proposed_trl: Annotated[Optional[int], Field(ge=1, le=9)] = None,
 ) -> Dict[str, Any]:
-    """확인된 실증 근거 수준으로 기술성숙도(TRL) 범위를 판정합니다.
+    """확인된 실증 근거 수준, 또는 요약서 '상용화전망' 서술로 기술성숙도(TRL)를 판정합니다.
+
+    commercialization_outlook을 주면 patent-summary-wizard trlConsistency와 같은 규칙으로 '현재 도달한 단계'를 찾고
+    (목표·예정·경쟁 기술 서술은 제외), proposed_trl이 그 단계 범위를 벗어나면 범위 안으로 보정합니다.
 
     Args:
         technology_domain: 기술 분야
-        evidence_level: 확인된 근거 수준 ("unknown"(모름), "concept"(개념), "lab_validated"(실험실 검증),
-            "prototype"(시제품 검증), "field_validated"(현장 실증), "commercial"(제품화·판매))
+        evidence_level: 확인된 근거 수준 ("unknown", "concept", "lab_validated", "prototype", "field_validated", "commercial")
         target_market: 목표 시장 (선택)
         evidence_note: 근거 자료 메모 (예: "2024년 농가 3곳 현장 실증 보고서")
+        commercialization_outlook: 요약서의 상용화전망 문단 (선택)
+        proposed_trl: 검토할 TRL 값 1~9 (선택, commercialization_outlook과 함께 쓰면 정합성 보정)
     """
     checkpoints = [
         "원료 수급 안정성 및 제조 단가",
         "해당 시 인허가·등록 규제(농약관리법·비료관리법·식품위생법 등) 소요 기간",
         "수요기업 기술이전 시 실시권 유형(통상/전용) 및 절차",
     ]
-
-    if evidence_level == "unknown":
-        return {
-            "technology_domain": technology_domain,
-            "target_market": target_market or "미지정",
-            "estimated_trl": None,
-            "trl_description": "TRL 미산정: 실증 근거(시제품·현장실증·판매 실적 등) 정보가 없습니다.",
-            "how_to_assess": "evidence_level에 확인된 근거 수준을 지정하면 TRL 범위를 산정합니다.",
-            "key_checkpoints": checkpoints,
-        }
-
-    trl, desc = _TRL_BY_EVIDENCE[evidence_level]
-    return {
+    result: Dict[str, Any] = {
         "technology_domain": technology_domain,
         "target_market": target_market or "미지정",
-        "estimated_trl": trl,
-        "trl_description": desc,
-        "evidence_basis": evidence_note or "근거 자료 미기재 (판정 근거를 함께 기록하십시오)",
         "key_checkpoints": checkpoints,
     }
+
+    if commercialization_outlook:
+        text = commercialization_outlook
+        if not trl_consistency.find_commercialization_section(text):
+            text = f"## 상용화전망\n{text}"
+        band = trl_consistency.detect_summary_maturity(text)
+        if band and proposed_trl is not None:
+            rec = trl_consistency.reconcile_trl(proposed_trl, text)
+            result.update({
+                "estimated_trl": f"TRL {rec['trl']}",
+                "trl_adjusted": rec["changed"],
+                "proposed_trl": proposed_trl,
+                "trl_description": trl_consistency.describe_trl_from_stage(rec["trl"], band),
+                "reference_levels": trl_consistency.reference_levels(rec["trl"], rec["trl"]),
+            })
+        elif band:
+            result.update({
+                "estimated_trl": _trl_range(band.min, band.max),
+                "trl_description": f"상용화전망이 기술완성도를 '{band.label}' 단계로 서술합니다.",
+                "reference_levels": trl_consistency.reference_levels(band.min, band.max),
+            })
+        else:
+            result.update({
+                "estimated_trl": f"TRL {proposed_trl}" if proposed_trl else None,
+                "trl_description": "상용화전망에서 현재 도달 단계 서술(실험실·파일럿·양산 준비 등)을 찾지 못했습니다.",
+            })
+        result["stage_rule"] = "patent-summary-wizard trlConsistency.ts (현재·과거로 서술된 최고 단계, 목표·예정·경쟁 기술 제외)"
+        return result
+
+    if evidence_level == "unknown":
+        result.update({
+            "estimated_trl": f"TRL {proposed_trl}" if proposed_trl else None,
+            "trl_description": "TRL 미산정: 실증 근거(시제품·현장실증·판매 실적 등) 정보가 없습니다."
+            if not proposed_trl
+            else "제시된 TRL을 확인할 근거 정보가 없습니다.",
+            "how_to_assess": "evidence_level 또는 commercialization_outlook을 주면 TRL 범위를 산정합니다.",
+        })
+        return result
+
+    lo, hi, desc = _TRL_BY_EVIDENCE[evidence_level]
+    result.update({
+        "estimated_trl": _trl_range(lo, hi),
+        "trl_description": desc,
+        "reference_levels": trl_consistency.reference_levels(lo, hi),
+        "evidence_basis": evidence_note or "근거 자료 미기재 (판정 근거를 함께 기록하십시오)",
+    })
+    if proposed_trl is not None and not lo <= proposed_trl <= hi:
+        result["proposed_trl_note"] = f"제시된 TRL {proposed_trl}은(는) 근거 수준({_trl_range(lo, hi)})과 맞지 않습니다."
+    return result

@@ -12,7 +12,12 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from patent_law_mcp.policies.policy_manager import get_policy_table
-from patent_law_mcp.tools.analysis import evaluate_commercialization, ground_summary_figures, summarize_patent
+from patent_law_mcp.tools.analysis import (
+    evaluate_commercialization,
+    ground_patent_applications,
+    ground_summary_figures,
+    summarize_patent,
+)
 from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
@@ -80,17 +85,26 @@ register(
 register(
     summarize_patent,
     "summarize_patent",
-    "특허 원문(명칭·초록·청구항·명세서)에서 문장을 발췌해 기술이전 상담용 요약 초안 생성 (원문에 없는 효과·수치는 만들지 않음)",
+    "특허 원문(명칭·초록·청구항·명세서)에서 문장을 발췌해 기술이전 상담용 요약 초안과 기술소개영상 시그니처 유형 추천 생성 "
+    "(원문에 없는 효과·수치는 만들지 않음)",
 )
 register(
     ground_summary_figures,
     "ground_summary_figures",
-    "작성된 요약문에서 원문에 없는 효과 수치('30% 절감', '2배 향상' 등)를 찾아 정성 표현으로 교체",
+    "작성된 요약문에서 원문에 없는 효과 수치('30% 절감', '2배 향상', '3시간 단축' 등)가 든 문장을 '추가 검증 필요'로 교체 "
+    "(patent-summary-wizard summaryGrounding 규칙)",
+)
+register(
+    ground_patent_applications,
+    "ground_patent_applications",
+    "제안된 활용 용도를 원문 발췌와 대조해 청구항 명시 용도·명세서 일반 용도·근거 미확인으로 분류 "
+    "(patent-summary-wizard applicationGrounding 규칙)",
 )
 register(
     evaluate_commercialization,
     "evaluate_commercialization",
-    "확인된 실증 근거 수준(개념·실험실·시제품·현장실증·제품화)으로 기술성숙도(TRL) 범위 판정",
+    "실증 근거 수준 또는 요약서 상용화전망 서술로 TRL 판정, 제시 TRL이 서술 단계와 어긋나면 보정 "
+    "(patent-summary-wizard trlConsistency 규칙)",
 )
 
 # 2. 기술실시계약
