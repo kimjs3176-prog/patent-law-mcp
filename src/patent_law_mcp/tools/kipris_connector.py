@@ -130,7 +130,8 @@ def parse_google_patents_html(html: str) -> Dict[str, Any]:
     section = soup.find("section", {"itemprop": "claims"})
     if section:
         for div in section.find_all("div", class_="claim", attrs={"num": True}):
-            if div.find_parent("div", class_="claim"):
+            # 번호 있는 청구항 안에 중첩된 경우만 건너뜀 (US 페이지는 독립항을 번호 없는 div.claim으로 한 번 더 감쌈)
+            if div.find_parent("div", class_="claim", attrs={"num": True}):
                 continue
             text = re.sub(r"^\d+\s*[.)]\s*", "", normalize_ws(div.get_text(" ", strip=True)))
             if text:
@@ -174,6 +175,7 @@ def parse_google_patents_html(html: str) -> Dict[str, Any]:
         "abstract": normalize_ws(abstract_div.get_text(" ", strip=True)) if abstract_div else "",
         "claims": claims,
         "events": events,
+        "_meta_numbers": [v for v in (first_meta("citation_patent_number"), first_meta("citation_patent_publication_number")) if v],
         "_check": {"application": app_d, "registration": reg_d, "publication": ("10" + pub_d) if len(pub_d) == 11 else ""},
     }
 
@@ -283,7 +285,8 @@ def fetch_patent_smart(
     """출원·등록·공개번호로 특허 서지·초록·청구항을 조회하고, 받은 문서가 요청한 번호와 일치하는지 검증합니다.
 
     Args:
-        patent_identifier: 특허번호 (예: "10-1070281", "10-2010-0062402", "KR101070281B1")
+        patent_identifier: 특허번호 (예: "10-1070281", "10-2010-0062402", "KR101070281B1",
+            해외: "US10000000B2", "US 2020/0123456", "EP1000000B1", "WO 2020/123456")
         number_type: 번호 종류 ("auto", "application"(출원), "registration"(등록), "publication"(공개)).
             auto는 7·9자리를 등록번호, 13자리를 출원번호로 봅니다. 13자리 공개번호는 "publication"으로 지정하십시오.
         refresh: True면 캐시를 무시하고 다시 조회
@@ -291,6 +294,17 @@ def fetch_patent_smart(
     출원번호 조회에는 KIPRIS Plus 인증키(환경변수 KIPRIS_API_KEY)가 필요합니다.
     확인하지 못하면 found=False와 시도 내역을 반환하며, 다른 특허를 대신 돌려주지 않습니다.
     """
+    from patent_law_mcp.tools.foreign_patents import fetch_foreign_patent, is_foreign_identifier
+
+    if is_foreign_identifier(patent_identifier):
+        foreign_key = re.sub(r"[\s,./\-]", "", patent_identifier.upper())
+        if not refresh and (hit := cache.get("patent", f"foreign:{foreign_key}")):
+            return hit
+        result = fetch_foreign_patent(patent_identifier)
+        if result["found"]:
+            cache.put("patent", f"foreign:{foreign_key}", result)
+        return result
+
     num = parse_kr_patent_number(patent_identifier, number_type)
     key = settings.kipris_api_key
     cache_key = f"{num.kind}:{num.digits}:{'kipris' if key else 'web'}"
@@ -333,6 +347,7 @@ def fetch_patent_smart(
         }
 
     data.pop("_check", None)
+    data.pop("_meta_numbers", None)
     applicants = data.get("applicants") or []
     result = {
         "found": True,

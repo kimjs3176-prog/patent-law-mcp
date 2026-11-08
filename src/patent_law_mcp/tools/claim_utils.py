@@ -11,14 +11,25 @@ _DEPENDENT_RE = re.compile(
     r"(?:제\s*\d+\s*항|청구항\s*\d+)[^.;]{0,40}?(?:에\s*있어서|에\s*따른|에\s*의한|중\s*어느)"
 )
 
+_DEPENDENT_EN_RE = re.compile(r"\b(?:of|in|to|according to|as claimed in|as recited in|as defined in)\s+claims?\s+\d+", re.I)
+_TRANSITION_EN_RE = re.compile(
+    r"\b(?:comprising|consisting essentially of|consisting of|including|which comprises|characterized in that|wherein)\b\s*:?", re.I
+)
+
+
+def is_english(text: str) -> bool:
+    letters = re.findall(r"[A-Za-z가-힣]", text or "")
+    return bool(letters) and sum(1 for ch in letters if ch.isascii()) / len(letters) > 0.6
+
+
 _TRANSITION_RE = re.compile(
     r"[;；]?\s*(?:을|를)?\s*(?:포함하여\s*이루어지는|포함하는|포함하고|구비하는|구비한)"
     r"|(?:으로|로)\s*(?:이루어진|이루어지는|구성된|구성되는)"
 )
 
-METHOD_WORDS = ("방법", "공정", "제조법")
-APPARATUS_WORDS = ("장치", "시스템", "모듈", "기기", "센서", "설비", "기구")
-COMPOSITION_WORDS = ("조성물", "화합물", "추출물", "균주", "제제", "소재")
+METHOD_WORDS = ("방법", "공정", "제조법", "method", "process")
+APPARATUS_WORDS = ("장치", "시스템", "모듈", "기기", "센서", "설비", "기구", "apparatus", "system", "device", "machine", "assembly")
+COMPOSITION_WORDS = ("조성물", "화합물", "추출물", "균주", "제제", "소재", "composition", "compound", "extract", "strain", "formulation")
 
 TECH_TYPE_LABELS = {
     "method": "공정 및 제조방법 (Process/Method)",
@@ -39,7 +50,8 @@ def is_deleted_claim(claim: str) -> bool:
 
 
 def is_dependent_claim(claim: str) -> bool:
-    return bool(_DEPENDENT_RE.search(normalize_ws(claim)[:80]))
+    head = normalize_ws(claim)[:80]
+    return bool(_DEPENDENT_RE.search(head) or _DEPENDENT_EN_RE.search(head))
 
 
 def split_claim_elements(claim: str) -> Tuple[List[str], str]:
@@ -49,6 +61,14 @@ def split_claim_elements(claim: str) -> Tuple[List[str], str]:
     전환부("~를 포함하는") 뒤의 청구 대상은 구성요소로 보지 않습니다.
     """
     text = normalize_ws(claim)
+    if is_english(text):
+        # 영문: 전제부 + 전환부(comprising 등) + 구성요소 — 한국어와 순서가 반대
+        text = re.sub(r"^\d+\s*[.)]\s*", "", text)
+        m = _TRANSITION_EN_RE.search(text)
+        subject, body = (text[: m.start()].strip(" ,"), text[m.end():]) if m else ("", text)
+        subject = re.sub(r"^(?:an?|the)\s+", "", subject, flags=re.I)
+        parts = [re.sub(r"^(?:and|or)\s+", "", p.strip(" ,.")) for p in re.split(r";", body)]
+        return [p for p in parts if len(p) >= 2], subject
     matches = list(_TRANSITION_RE.finditer(text))
     if matches:
         last = matches[-1]
@@ -66,6 +86,12 @@ def split_claim_elements(claim: str) -> Tuple[List[str], str]:
 
 
 def _classify_title_part(part: str) -> str:
+    if is_english(part):
+        low = part.lower()
+        for kind, words in (("method", METHOD_WORDS), ("apparatus", APPARATUS_WORDS), ("composition", COMPOSITION_WORDS)):
+            if any(re.search(rf"\b{w}\b", low) for w in words if w.isascii()):
+                return kind
+        return "product"
     words = part.strip().split()
     last = words[-1] if words else ""
     if any(k in last for k in METHOD_WORDS):
@@ -89,7 +115,7 @@ def detect_technology_kind(title: str, main_claim: str = "") -> str:
     if not source:
         return "product"
 
-    kinds = {_classify_title_part(p) for p in re.split(r"\s+및\s+|,\s*", source) if p.strip()}
+    kinds = {_classify_title_part(p) for p in re.split(r"\s+및\s+|\s+and\s+|,\s*", source, flags=re.I) if p.strip()}
     if "method" in kinds and len(kinds) > 1:
         return "mixed"
     for k in ("method", "apparatus", "composition"):

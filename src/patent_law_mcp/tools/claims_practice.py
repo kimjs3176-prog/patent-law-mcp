@@ -20,10 +20,17 @@ _STOPWORDS = {
 _JOSA = ("으로부터", "에서의", "으로서", "으로써", "로부터", "에서", "에게", "으로", "로서", "로써", "부터", "까지",
          "와의", "과의", "하는", "되는", "하여", "되어", "하고", "되고", "을", "를", "이", "가", "은", "는", "의",
          "에", "와", "과", "로", "도", "만")
-_NEGATION = re.compile(r"없이|없는|없음|없다|없으며|미적용|미사용|미장착|제외|않|아니")
+_STOPWORDS |= {
+    "the", "said", "and", "or", "of", "to", "for", "with", "from", "into", "onto", "on", "in", "at", "by", "an",
+    "wherein", "comprising", "comprises", "including", "configured", "which", "that", "each", "least", "one", "plurality",
+}
+_NEGATION = re.compile(r"없이|없는|없음|없다|없으며|미적용|미사용|미장착|제외|않|아니|\bno\b|\bnot\b|\bwithout\b|\bnone\b|\blacks?\b")
+_NEGATION_BEFORE = re.compile(r"\b(?:without|no|not|lacks?|free of|absence of)\b[\w\s-]{0,12}$")
 
 
 def _stem(token: str) -> str:
+    if token.isascii():
+        return token.lower()
     for j in _JOSA:
         if token.endswith(j) and len(token) - len(j) >= 2:
             return token[: -len(j)]
@@ -34,7 +41,7 @@ def _keywords(element: str) -> List[str]:
     out: List[str] = []
     for tok in re.findall(r"[가-힣A-Za-z0-9]{2,}", element):
         stem = _stem(tok)
-        if len(stem) >= 2 and stem not in _STOPWORDS and tok not in _STOPWORDS and stem not in out:
+        if len(stem) >= 2 and stem not in _STOPWORDS and tok.lower() not in _STOPWORDS and stem not in out:
             out.append(stem)
     return out
 
@@ -46,7 +53,8 @@ def _present(keyword: str, spec: str) -> str:
         found = True
         window = spec[m.end(): m.end() + 12]
         window = re.split(r"[.,;\n]|하며|하고|이며", window)[0]
-        if not _NEGATION.search(window):
+        before = re.split(r"[.,;\n]", spec[max(0, m.start() - 25): m.start()])[-1]
+        if not _NEGATION.search(window) and not _NEGATION_BEFORE.search(before):
             return "present"
     return "negated" if found else "absent"
 

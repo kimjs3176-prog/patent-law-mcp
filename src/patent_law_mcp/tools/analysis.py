@@ -146,7 +146,7 @@ def _section(text: str, start_pattern: str, end_pattern: str) -> str:
 
 
 def _sentences(text: str) -> List[str]:
-    return [s.strip() for s in re.split(r"(?<=[.다])\s+", normalize_ws(text)) if len(s.strip()) > 10]
+    return [s.strip() for s in re.split(r"(?<=[.다!?])\s+", normalize_ws(text)) if len(s.strip()) > 10]
 
 
 def _extract_effect(abstract: str, description: str) -> Optional[str]:
@@ -159,8 +159,9 @@ def _extract_effect(abstract: str, description: str) -> Optional[str]:
         return " ".join(_sentences(effect_section)[:2]) or effect_section[:200]
 
     verb_re = re.compile(summary_grounding.EFFECT_VERB)
+    en_re = re.compile(r"\b(?:effect|advantage|improv\w*|reduc\w*|increas\w*|enhanc\w*|prevent\w*)\b", re.I)
     for text in (description, abstract):
-        hits = [s for s in _sentences(text) if "효과" in s or verb_re.search(s)]
+        hits = [s for s in _sentences(text) if "효과" in s or verb_re.search(s) or en_re.search(s)]
         if hits:
             return " ".join(hits[:2])
     return None
