@@ -1,85 +1,134 @@
-# 🌾 Patent Law MCP (`patent-law-mcp`)
+# Patent Law MCP (`patent-law-mcp`)
 
-> **공공·국유 특허 기술이전 및 국가직무발명 처분 실무 전용 Model Context Protocol (MCP) 서버**  
-> 복잡한 법제처 API나 KIPRIS 인증키 없이, 설치 즉시 100% 로컬에서 동작하는 **Zero-API 완전 자립형 특허실무 도구**입니다.
+> 특허 기술이전·직무발명 보상·권리 관리 실무를 돕는 Model Context Protocol(MCP) 서버
+> 국유특허(지식재산처 고시)를 기본으로, 대학·출연연과 민간 기업 규정도 프로파일로 지원합니다.
 
----
+## 원칙
 
-## ⚡ 왜 Patent Law MCP인가요?
+- **모르면 모른다고 합니다.** 조회에 실패하거나 원문에 없는 값은 `found=False`·`warnings`·`미확인`으로 돌려주고, 특허번호·출원인·수치를 지어내지 않습니다.
+- **받은 문서는 번호로 검증합니다.** Google Patents·KIPRIS에서 받은 문서의 출원·등록·공개번호가 요청과 다르면 버립니다.
+- **법령 기준값은 한 파일에서 관리합니다.** 최소실시료·보상 비율·비과세 한도와 근거 조항은 `policies/*.yaml`에 있고, 원문 대조가 안 된 항목은 모든 결과에 `unverified_items`로 표시됩니다.
 
-1. **🔑 API 키 0개 (Zero-Setup)**
-   - 법제처(`LAW_OC`)나 KIPRIS API 키를 신청할 필요가 없습니다.
-   - 키프리스나 네이버 특허의 공보 텍스트를 복사해 붙여넣기만 하면 청구항, 초록, 서지사항을 자체 스마트 파서가 100% 분해합니다.
-2. **⚖️ 최신 지식재산처 고시(제2025-4호) 자동 판정**
-   - **전용실시 최소실시료(300만 원 이상 / 60일 이내 납부)** 강행규정 자동 반영
-   - **등록 후 3년 미실시 국유특허 3년 무상실시** 및 중소기업 재계약 시 기본율 2%p 인하 심의
-   - **처분보상금 산출(순수입 50%)** 및 소득세법상 연간 700만 원 비과세 자동 계산
-3. **🎬 실무 원스톱 파이프라인**
-   - 특허 요약서 작성 ➔ 60초 바이어 브리핑 피치 ➔ 기술실시계약 조건 설계 ➔ 권리범위 매칭 ➔ 특허 패키징(번들링)까지 한 번에 연결됩니다.
+## 빠른 시작
 
----
-
-## 🚀 빠른 시작 (Quick Start)
-
-### 1. Claude Desktop 연결
-Claude Desktop 설정 파일(`claude_desktop_config.json`)의 `mcpServers`에 아래 내용을 추가하세요:
+### Claude Desktop (로컬, stdio)
 
 ```json
 {
   "mcpServers": {
     "patent-law-mcp": {
       "command": "uv",
-      "args": [
-        "--directory",
-        "/절대경로/patent-law-mcp",
-        "run",
-        "patent-law-mcp"
-      ]
+      "args": ["--directory", "/절대경로/patent-law-mcp", "run", "patent-law-mcp"],
+      "env": {
+        "KIPRIS_API_KEY": "선택: KIPRIS Plus 인증키",
+        "LAW_OC": "선택: 국가법령정보 공동활용 OC",
+        "PATENT_LAW_MCP_PROFILE": "national"
+      }
     }
   }
 }
 ```
 
-### 2. Cursor IDE 연결
-Cursor 설정의 **Features > MCP Servers**에서 `Add New MCP Server`를 누르고 등록합니다:
-- **Name**: `patent-law-mcp`
-- **Type**: `command`
-- **Command**: `uv --directory /절대경로/patent-law-mcp run patent-law-mcp`
+### 원격(HTTP) 배포
 
----
+```bash
+PATENT_LAW_MCP_TOKEN=긴-임의-문자열 uv run patent-law-mcp --transport streamable-http --host 0.0.0.0 --port 8000 --allowed-host mcp.example.org
+```
 
-## 🛠️ 주요 도구 한눈에 보기
+```bash
+docker build -t patent-law-mcp .
+```
 
-| 분류 | 도구명 | 하는 일 |
+```bash
+docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_API_KEY=... patent-law-mcp --allowed-host mcp.example.org
+```
+
+- 클라이언트는 `https://<host>/mcp`에 `Authorization: Bearer <토큰>` 헤더로 접속합니다.
+- 토큰 없이 127.0.0.1 이외 주소에 바인딩하면 서버가 시작을 거부합니다.
+
+## 인증키 (모두 선택)
+
+| 환경변수 | 쓰는 도구 | 발급 |
 |:---|:---|:---|
-| **📄 공보 분석 & 요약** | `analyze_patent_document` | 복사한 공보 텍스트에서 청구항·스펙 칩을 추출하고 60초 바이어 피치와 TRL을 원스톱 진단 (API 불필요) |
-| | `summarize_patent` | 특허 원문 기반 A4 요약서 및 AI 환각 수치 정성적 자동 보정 |
-| **💼 기술실시계약 실무** | `design_licensing_terms` | 기업 규모별 선급·경상기술료율 및 전용실시 최소실시료(300만원) 강행규정 산출 |
-| | `review_licensing_contract` | 계약서 초안의 필수 감사 특약(불실시 해지권, 장부 실사권) 점검 |
-| **🏛️ 국유특허 처분·행정** | `evaluate_unutilized_free_license` | 등록 후 3년 미실시 국유특허의 3년 무상 통상실시 및 중소기업 재계약 우대 심의 |
-| | `calculate_disposal_compensation` | 직접비용 공제 후 순수입 50% 처분보상금 및 700만원 비과세 한도 자동 계산 |
-| | `evaluate_exclusive_renewal` | 전용실시 갱신 법정 5대 사유 및 만료 30일 전 신청 요건 심의 |
-| **🎯 타겟팅 & 권리범위** | `verify_tech_transfer_scope_match` | 도입 희망 기업 제품과 특허 청구항 구성요소(All Elements Rule) 일치 여부 대조 |
-| | `bundle_patents_for_transfer` | 원천·공정·장치 특허를 묶어 회피설계를 막고 일괄 감면율(20~25%)을 적용하는 패키지 구성 |
-| | `find_target_licensees_by_patent` | 특허 IPC 및 제품군 기반 표준산업분류(KSIC) 매칭 및 유력 수요기업군(양산/스타트업) 도출 |
+| `KIPRIS_API_KEY` | 특허 검색, 출원번호 조회, KIPRIS 공식 서지 | plus.kipris.or.kr (특허·실용 공개·등록공보 서비스) |
+| `LAW_OC` | 법령 검색·조문 조회 | open.law.go.kr 회원가입 후 Open API 신청 (무료). **신청 시 호출 서버의 IP·도메인을 등록해야 합니다** |
+
+키가 없으면 해당 도구는 발급 방법을 안내하고, 등록·공개번호 조회는 Google Patents 공개 웹으로 동작합니다.
+
+## 도구 (26개)
+
+| 분류 | 도구 | 하는 일 |
+|:---|:---|:---|
+| **실데이터** | `search_patents` | KIPRIS 공식 API 특허 검색 (키워드 / 출원인+명칭), 결과 가공 없음 |
+| | `fetch_patent_smart` | 출원·등록·공개번호 조회 + 번호 검증. 해외(US·EP·WO, JP·CN 등은 종류 코드 포함)도 지원 |
+| | `search_laws` · `get_law_article` | 법령·행정규칙 검색, "특허법 제100조" 같은 조문 원문·시행일 |
+| **원문 분석** | `parse_raw_patent_text` · `analyze_patent_document` | 붙여넣은 공보·명세서 분해 (등록공보·전자출원 서식, 특허권자 주소 제거) |
+| | `inspect_and_summarize_by_appno` · `summarize_patent` | 원문 발췌 요약 초안, 기술소개영상 시그니처 유형 추천 |
+| | `ground_summary_figures` | 요약문의 근거 없는 효과 수치 문장을 '추가 검증 필요'로 교체 |
+| | `ground_patent_applications` | 활용 용도를 원문 발췌로 검증 (청구항 명시 / 명세서 일반 / 근거 미확인) |
+| | `evaluate_commercialization` | 실증 근거 또는 상용화전망 서술로 TRL 판정·보정 |
+| **기한·권리 관리** | `calculate_patent_deadline` | 특허법 제14조 기간 계산 (공휴일·토요일·근로자의 날 반영) — 우선권 12개월, PCT 31개월, 심사청구 3년, 공지예외 12개월 |
+| | `calculate_patent_term` | 존속기간 만료일 (특허 20년·실용신안 10년, 연장 반영) |
+| | `calculate_annuity_schedule` | 연차료 납부기한·추가납부기간·회복 가능기간과 현재 상태 |
+| | `check_patent_rights_status` | 번호 조회 + 존속기간 + 연차료 상태 한 번에 |
+| **계약·보상** | `design_licensing_terms` · `review_licensing_contract` | 계약조건 초안, 계약서 필수 조항 점검 (면제·해지 불가 문구는 REVIEW, 최소실시료 미달은 FAIL) |
+| | `process_invention_disclosure` · `calculate_disposal_compensation` | 직무발명 신고 안건, 보상금과 발명자별 비과세·과세(재직 근로소득/퇴직 기타소득) |
+| | `evaluate_unutilized_free_license` · `evaluate_exclusive_renewal` | [국유특허 전용] 미활용 특허 무상실시, 전용실시 갱신 |
+| | `get_policy_table` | 프로파일별 기준값·근거 조항·원문 확인 필요 항목 |
+| **권리범위·사업화** | `verify_tech_transfer_scope_match` | 청구항 구성요소와 제품 설명 키워드 1차 대조 (부정 표현 반영, 한·영) |
+| | `bundle_patents_for_transfer` · `find_target_licensees_by_patent` | 패키지 구성, IPC→KSIC 참고 매핑과 수요기업군 |
+| **기타** | `get_bundled_sample_patent` | 시연용 **가상** 샘플 (실존 특허 아님) |
+
+## 기관 유형별 프로파일
+
+| 프로파일 | 파일 | 적용 |
+|:---|:---|:---|
+| `national` (기본) | `policies/kipo_notice_rules.yaml` | 국유특허 — 국가공무원 등 직무발명 규정, 지식재산처고시 제2025-4호 |
+| `public_research` | `policies/public_research.yaml` | 대학 산학협력단·정부출연연구기관 — 기술이전법·발명진흥법·기관 규정 |
+| `private_company` | `policies/private_company.yaml` | 민간 기업 — 발명진흥법·사내 보상규정 |
+
+- 기본 프로파일은 `PATENT_LAW_MCP_PROFILE`, 호출 단위는 도구의 `profile` 인자로 고릅니다.
+- 기관·사내 규정 값(보상 비율 등)은 비워 두었습니다(`null`). 기관 값을 넣거나 호출할 때 `payout_ratio`로 주십시오.
+- YAML을 고치면 다음 호출부터 반영됩니다. 필수 항목이 빠지면 오류로 알립니다.
+- 다른 파일을 쓰려면 `PATENT_LAW_MCP_POLICY_FILE`로 경로를 지정합니다.
+
+## 원문 확인이 필요한 항목
+
+고시(제2025-4호) 원문을 공개 검색으로 확인하지 못해, 다음 항목은 각 YAML의 `verification_notes`에 남겨 두었습니다.
+- 고시 조항번호, 그리고 300만 원·60일·30일·3년 기준
+- 처분보상금의 비용 공제 여부
+- 중소기업 우대 '2%p 인하' 표현
+- 연차료 회복 신청 기간
+
+원문과 대조한 뒤 해당 줄을 지우십시오.
+
+## 캐시
+
+- 조회 결과는 SQLite에 저장합니다. 기본 경로는 `~/.cache/patent-law-mcp/cache.sqlite3`입니다.
+- 보관 기간은 특허 원문 7일, 검색·법령 24시간입니다.
+- 성공한 조회만 저장하며, `refresh=True`를 주면 캐시를 무시합니다.
+- 설정: `PATENT_LAW_MCP_CACHE`(경로 또는 `off`), `PATENT_LAW_MCP_CACHE_TTL_HOURS`
+
+## 업스트림 동기화
+
+요약 근거 확인·용도 근거·TRL 정합성 규칙은 [patent-summary-wizard](https://github.com/kimjs3176-prog/patent-summary-wizard)에서, 공보 특허권자 추출과 영상 시그니처 규칙은 [patent-video-skill](https://github.com/kimjs3176-prog/patent-video-skill)에서 옮겨 왔습니다.
+- 매일 GitHub Actions가 변경을 확인해 `upstream-sync` 이슈를 엽니다.
+- 반영 절차는 [`upstream/README.md`](upstream/README.md)를 보십시오.
+
+## 개발
+
+```bash
+uv sync
+```
+
+```bash
+uv run pytest -q
+```
+
+```bash
+python3 scripts/sync_upstream.py --check
+```
 
 ---
 
-## 📋 사용 예시 (Claude 질문 프롬프트)
-
-- **공보 분석**: *"이 특허 공보 텍스트 붙여넣을 테니 핵심 스펙이랑 60초 바이어 브리핑 대본 뽑아줘: [공보 내용 붙여넣기]"*
-- **계약 설계**: *"중소기업에 국유특허 전용실시를 주려고 해. 예상 매출 5억일 때 지식재산처 고시 기준 최소실시료랑 추천 계약조건 뽑아줘."*
-- **무상실시 심의**: *"등록된 지 4년 동안 사업화 안 된 국유특허인데, 중소기업이 무상으로 가져갈 수 있는지 심의해줘."*
-- **보상금 계산**: *"기술이전 계약금 5천만 원 들어왔고 출원비용 600만 원 썼어. 발명자 2명(지분 7:3) 처분보상금 명세표 뽑아줘."*
-
----
-
-## ⚙️ 법령 개정 대응 (`policies/`)
-
-- 지식재산처 고시나 소득세법이 개정될 경우, **파이썬 코드를 고칠 필요 없이 `src/patent_law_mcp/policies/kipo_notice_rules.yaml`의 숫자만 변경**하면 즉시 전 도구에 반영됩니다.
-- 모든 산출 결과에는 적용된 고시 명칭과 시행일자가 감사 추적용 메타데이터(`legal_audit_basis`)로 함께 출력됩니다.
-
----
-
-> ⚖️ **실무 면책 조항 (Disclaimer)**  
-> 본 MCP 서버는 변리사의 특허 출원 대리, 명세서 작성, 심사/거절이유 대응 업무를 대체하지 않으며, 공공연구기관 및 기술거래기관의 기술이전 계약, 국유특허 처분·보상 행정 절차 보조를 위해 설계되었습니다.
+> ⚖️ **면책** 이 서버는 변리사의 출원 대리, 명세서 작성, 심사 대응, 침해 감정을 대체하지 않습니다. 계약·보상·기한 계산 결과는 실무 검토용 초안이며, 최종 판단은 법령·고시 원문과 등록원부, 전문가 검토로 확인하십시오.
