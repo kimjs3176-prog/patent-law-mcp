@@ -7,7 +7,9 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
+
+from pydantic import Field
 
 from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.bundling_and_targeting import find_target_licensees_by_patent
@@ -90,7 +92,7 @@ def _extract_claims(text: str) -> List[Dict[str, Any]]:
     return claims
 
 
-def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
+def parse_raw_patent_text(raw_text: Annotated[str, Field(min_length=20)]) -> Dict[str, Any]:
     """공보 텍스트나 명세서에서 발명의 명칭·출원/등록/공개번호·출원인(특허권자)·IPC·초록·청구항을 분해합니다.
 
     지원 형식: 등록/공개특허공보 복사본("(54) 발명의 명칭", "(57) 요 약", "청구항 1"),
@@ -185,7 +187,7 @@ def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, 
 
 
 def analyze_patent_document(
-    raw_document_text: str,
+    raw_document_text: Annotated[str, Field(min_length=20)],
     target_industry: Optional[str] = None,
 ) -> Dict[str, Any]:
     """붙여넣은 공보 텍스트를 파싱한 뒤 요약 초안과 수요기업 탐색 참고자료를 함께 만듭니다. (외부 API 불필요)

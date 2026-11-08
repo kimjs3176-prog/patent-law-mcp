@@ -5,7 +5,9 @@
 """
 
 import re
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
+
+from pydantic import Field
 
 from patent_law_mcp.tools.claim_utils import (
     detect_technology_kind,
@@ -56,7 +58,10 @@ class GroundingCorrector:
         return cls.check(summary_text, source_text)["sanitized_text"]
 
 
-def ground_summary_figures(summary_text: str, source_text: str) -> Dict[str, Any]:
+def ground_summary_figures(
+    summary_text: Annotated[str, Field(min_length=1)],
+    source_text: Annotated[str, Field(min_length=1)],
+) -> Dict[str, Any]:
     """LLM 등이 작성한 요약문에서 원문에 없는 효과 수치(예: '30% 절감', '2배 향상')를 찾아 정성적 표현으로 바꿉니다.
 
     Args:
@@ -141,7 +146,7 @@ def summarize_patent(
     patent_id: str,
     title: str,
     abstract: str,
-    claims: List[str],
+    claims: Annotated[List[str], Field(min_length=1)],
     description: Optional[str] = None,
     applicant: Optional[str] = None,
 ) -> Dict[str, Any]:

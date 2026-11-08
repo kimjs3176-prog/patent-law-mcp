@@ -14,10 +14,11 @@ import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 import httpx
 from bs4 import BeautifulSoup
+from pydantic import Field
 
 from patent_law_mcp.config import settings
 from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
@@ -269,7 +270,7 @@ def fetch_from_kipris_api(application_digits: str, service_key: str) -> Tuple[Op
 
 # ---------------------------------------------------------------- 통합 조회
 def fetch_patent_smart(
-    patent_identifier: str,
+    patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
     number_type: NumberType = "auto",
 ) -> Dict[str, Any]:
     """출원·등록·공개번호로 특허 서지·초록·청구항을 조회하고, 받은 문서가 요청한 번호와 일치하는지 검증합니다.
@@ -333,7 +334,7 @@ def fetch_patent_smart(
 
 
 def inspect_and_summarize_by_appno(
-    patent_identifier: str,
+    patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
     number_type: NumberType = "auto",
 ) -> Dict[str, Any]:
     """특허번호로 원문을 조회·검증한 뒤 요약 초안과 TRL 판정 안내를 함께 만듭니다.
