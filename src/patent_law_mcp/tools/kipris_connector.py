@@ -150,6 +150,12 @@ def parse_google_patents_html(html: str) -> Dict[str, Any]:
         m = re.search(r"KR:?(\d+)", value)
         return m.group(1) if m else ""
 
+    events = []
+    for ev in soup.find_all(attrs={"itemprop": "events"}):
+        fields = {c.get("itemprop"): normalize_ws(c.get_text(" ", strip=True)) for c in ev.find_all(attrs={"itemprop": True})}
+        if fields.get("title"):
+            events.append({"date": fields.get("date", ""), "title": fields["title"], "type": fields.get("type", "")})
+
     app_d = number_part(first_meta("citation_patent_application_number"))
     reg_d = number_part(first_meta("citation_patent_number"))
     pub_d = number_part(first_meta("citation_patent_publication_number"))
@@ -167,6 +173,7 @@ def parse_google_patents_html(html: str) -> Dict[str, Any]:
         "cpc_codes": cpc,
         "abstract": normalize_ws(abstract_div.get_text(" ", strip=True)) if abstract_div else "",
         "claims": claims,
+        "events": events,
         "_check": {"application": app_d, "registration": reg_d, "publication": ("10" + pub_d) if len(pub_d) == 11 else ""},
     }
 

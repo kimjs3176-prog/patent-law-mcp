@@ -1,0 +1,53 @@
+# 특허 기간·기한 계산 규칙
+# 계산 방식: 특허법 제14조(기간의 계산) — 첫날 불산입, 월·연은 역(曆)으로 계산,
+# 기간의 마지막 날이 공휴일(토요일·근로자의 날 포함)이면 다음 날 만료. 공휴일은 holidays 라이브러리(대한민국) + 5월 1일.
+
+metadata:
+  basis: "특허법 제14조, 민법 제157조·제160조"
+
+verification_notes:
+  - "연차료 회복 신청 기간(추가납부기간 경과 후 3개월, 특허료 2배)은 특허법 제81조의3 원문 확인 필요"
+  - "심사청구 기한 3년은 2017.3.1. 이후 출원 기준 (그 전 출원은 5년)"
+  - "연차료 납부기한이 공휴일인 경우의 처리는 실무 확인 권장 (계산 결과에 명목일과 공휴일 반영일을 함께 표시)"
+
+presets:
+  convention_priority:
+    label: "조약우선권 주장 출원 기한"
+    months: 12
+    base: "선출원일 (최우선일)"
+    article: "특허법 제54조"
+  domestic_priority:
+    label: "국내우선권 주장 출원 기한"
+    months: 12
+    base: "선출원일"
+    article: "특허법 제55조"
+  pct_national_phase:
+    label: "PCT 국내단계 진입(국어번역문 제출) 기한"
+    months: 31
+    base: "우선일"
+    article: "특허법 제201조"
+  examination_request:
+    label: "심사청구 기한 (2017.3.1. 이후 출원)"
+    years: 3
+    base: "출원일"
+    article: "특허법 제59조"
+  grace_period:
+    label: "공지예외 주장 출원 기한"
+    months: 12
+    base: "최초 공개일"
+    article: "특허법 제30조"
+
+term:
+  patent_years: 20          # 특허법 제88조: 설정등록일부터 출원일 후 20년이 되는 날까지
+  utility_model_years: 10   # 실용신안법 제22조
+  patent_article: "특허법 제88조"
+  utility_model_article: "실용신안법 제22조"
+  extension_article: "특허법 제89조(허가 등에 따른 연장), 제92조의2(등록지연에 따른 연장)"
+
+annuity:
+  first_payment_years: 3    # 설정등록 시 1~3년분 납부 (특허법 제79조 제1항)
+  late_payment_months: 6    # 납부기간 경과 후 추가납부 (특허법 제81조 제1항)
+  restoration_months: 3     # 추가납부기간 경과 후 회복 신청 (특허법 제81조의3) — 원문 확인 필요
+  due_article: "특허법 제79조"
+  late_article: "특허법 제81조"
+  restoration_article: "특허법 제81조의3"

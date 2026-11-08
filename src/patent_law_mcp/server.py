@@ -21,6 +21,12 @@ from patent_law_mcp.tools.analysis import (
 from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
+from patent_law_mcp.tools.deadlines import (
+    calculate_annuity_schedule,
+    calculate_patent_deadline,
+    calculate_patent_term,
+    check_patent_rights_status,
+)
 from patent_law_mcp.tools.document_parser import (
     analyze_patent_document,
     get_bundled_sample_patent,
@@ -169,7 +175,31 @@ register(
     "프로파일(national·public_research·private_company)별 기준값(최소실시료·보상 비율·비과세 한도 등), 근거 조항, 원문 확인 필요 항목 조회",
 )
 
-# 4. 권리범위·포트폴리오·수요기업
+# 4. 기한·권리 관리 계산기
+register(
+    calculate_patent_deadline,
+    "calculate_patent_deadline",
+    "특허 절차 기한 계산 (특허법 제14조: 첫날 불산입·역 계산·공휴일이면 다음 날). 조약/국내우선권 12개월, PCT 31개월, "
+    "심사청구 3년, 공지예외 12개월 또는 임의 개월·일수",
+)
+register(
+    calculate_patent_term,
+    "calculate_patent_term",
+    "출원일 기준 존속기간 만료일 계산 (특허 20년·실용신안 10년, 연장 일수 반영)",
+)
+register(
+    calculate_annuity_schedule,
+    "calculate_annuity_schedule",
+    "설정등록일 기준 연차료 납부기한·추가납부기간·회복 신청 가능기간과 현재 상태 계산 (금액은 계산하지 않음)",
+)
+register(
+    check_patent_rights_status,
+    "check_patent_rights_status",
+    "특허번호로 서지·상태 조회(번호 검증) 후 존속기간 만료일과 연차료 상태 정리",
+    NETWORK,
+)
+
+# 5. 권리범위·포트폴리오·수요기업
 register(
     verify_tech_transfer_scope_match,
     "verify_tech_transfer_scope_match",
