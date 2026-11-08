@@ -1,259 +1,400 @@
-"""특허 원문 하이브리드 자동 수집기 (Zero-API 공개 웹 + KIPRIS Plus API 자동 전환)
+"""특허 원문 수집기 (KIPRIS Plus 공식 API + Google Patents 공개 웹)
 
-동작 원리:
-1. KIPRIS API 키가 없을 때: 구글 특허(Google Patents) 공개 웹 크롤러를 통해 출원/등록번호만으로 즉시 자동 수집 (Zero-API / No Setup)
-2. KIPRIS API 키가 제공될 때: 특허청 KIPRIS Plus 고속 공식 REST API로 자동 전환하여 조회
-3. 오프라인/네트워크 장애 시: 로컬 내장 국유특허 데이터셋으로 안전하게 자동 폴백
+- 출원번호: KIPRIS Plus API로만 조회합니다 (환경변수 KIPRIS_API_KEY 필요).
+  Google Patents는 출원번호로 직접 조회할 수 없고, 같은 숫자의 공개번호는 전혀 다른 특허이기 때문입니다.
+- 등록번호·공개번호: Google Patents에서 조회한 뒤, 받은 문서의 번호가 요청 번호와 같은지 검증합니다.
+  KIPRIS 키가 있으면 확인된 출원번호로 KIPRIS 공식 서지를 이어서 조회합니다.
+- 어느 경로로도 확인하지 못하면 다른 특허나 가상 데이터를 대신 돌려주지 않고 found=False와 사유를 반환합니다.
+
+KIPRIS 응답 구조는 patent-video-skill/scripts/kipris.py의 parse()와 같은 경로를 사용합니다.
 """
 
-import os
-from pathlib import Path
 import re
-import urllib.parse
-import urllib.request
+import time
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
-from bs4 import BeautifulSoup
-import httpx
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
+from datetime import date
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
-from patent_law_mcp.tools.analysis import summarize_patent, evaluate_commercialization
+import httpx
+from bs4 import BeautifulSoup
+from pydantic import Field
+
+from patent_law_mcp import cache, net
+from patent_law_mcp.config import settings
+from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
+from patent_law_mcp.tools.claim_utils import normalize_ws
 
 KIPRIS_API_BASE = "https://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getBibliographyDetailInfoSearch"
+GOOGLE_PATENTS_URL = "https://patents.google.com/patent/{gid}/ko"
+RETRY_DELAY_SECONDS = 2.0
+
+NumberType = Literal["auto", "application", "registration", "publication"]
+_KIND_LABELS = {"application": "출원번호", "registration": "등록번호", "publication": "공개번호"}
 
 
-def clean_number(identifier: str) -> str:
-    """하이픈, 공백 및 문자 기호를 제거하고 숫자만 추출합니다."""
-    return re.sub(r"\D", "", identifier)
+@dataclass(frozen=True)
+class KrPatentNumber:
+    kind: str     # application | registration | publication
+    digits: str   # 출원·공개: 13자리(10YYYYNNNNNNN), 등록: 9자리(10NNNNNNN)
+    display: str
+    google_id: Optional[str]
+
+    @property
+    def label(self) -> str:
+        return _KIND_LABELS[self.kind]
 
 
-def normalize_to_google_patents_id(identifier: str) -> str:
-    """한국 출원/등록번호를 Google Patents 표준 식별자(KR...)로 변환합니다."""
-    clean = clean_number(identifier)
-    raw = identifier.strip().upper()
-    if raw.startswith("KR"):
-        return raw
+def parse_kr_patent_number(identifier: str, number_type: NumberType = "auto") -> KrPatentNumber:
+    """한국 특허 출원·등록·공개번호를 해석합니다. 형식이 맞지 않으면 ValueError를 냅니다.
 
-    # 7자리 등록번호: 1070281 -> KR101070281B1
-    if len(clean) == 7:
-        return f"KR10{clean}B1"
-    # 9자리 등록번호: 101070281 -> KR101070281B1
-    if clean.startswith("10") and len(clean) == 9:
-        return f"KR{clean}B1"
-    # 13자리 출원번호: 1020100062402 -> KR20100062402A
-    if clean.startswith("10") and len(clean) == 13:
-        year = clean[2:6]
-        serial = clean[6:]
-        return f"KR{year}{serial}A"
-    return f"KR{clean}"
-
-
-def fetch_from_google_patents(identifier: str) -> Optional[Dict[str, Any]]:
-    """구글 특허 공개 웹페이지에서 출원/등록번호를 기반으로 명세서를 자동 크롤링합니다. (API 키 불필요)"""
-    gid = normalize_to_google_patents_id(identifier)
-    url = f"https://patents.google.com/patent/{gid}/ko"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
-    }
-
-    try:
-        resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=12.0)
-        if resp.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # 1. 발명의 명칭
-        title_meta = soup.find("meta", {"name": "DC.title"})
-        title = title_meta.get("content").strip() if title_meta else ""
-        if not title:
-            title_node = soup.find("title")
-            title = title_node.text.split(" - ")[0].strip() if title_node else identifier
-
-        # 2. 요약
-        abs_div = soup.find("div", {"class": "abstract"}) or soup.find("section", {"itemprop": "abstract"})
-        abstract = abs_div.text.strip() if abs_div else ""
-
-        # 3. 청구항 목록
-        claims = []
-        claim_texts = soup.find_all("div", {"class": "claim-text"})
-        for ct in claim_texts:
-            c = ct.text.strip()
-            if len(c) > 15:
-                claims.append(c)
-
-        if not claims:
-            # 섹션 기반 탐색
-            claims_section = soup.find("section", {"itemprop": "claims"})
-            if claims_section:
-                for line in claims_section.text.split("\n"):
-                    line_clean = line.strip()
-                    if len(line_clean) > 20:
-                        claims.append(line_clean)
-
-        # 4. 특허권자/출원인
-        assignee_meta = soup.find("meta", {"name": "DC.contributor", "scheme": "assignee"})
-        applicant = assignee_meta.get("content").strip() if assignee_meta else "대한민국 (국가/공공기관)"
-
-        return {
-            "title": title,
-            "application_number": identifier,
-            "register_number": gid,
-            "register_status": "등록/공개 (구글 특허 확인)",
-            "ipc_code": "A23L" if "떡" in title or "식품" in title else "A01G",
-            "applicant": applicant,
-            "abstract": abstract or f"{title}에 관한 기술 명세서",
-            "claims": claims or [abstract or f"{title}의 핵심 독립 청구항"],
-            "source": "구글 특허(Google Patents) 공개 웹 크롤러 (Zero-API 무인증 모드)",
-        }
-    except Exception:
-        return None
-
-
-def fetch_from_kipris_api(appno: str, service_key: str) -> Optional[Dict[str, Any]]:
-    """특허청 KIPRIS Plus 공식 REST API를 호출하여 정식 XML 데이터를 파싱합니다."""
-    clean_no = clean_number(appno)
-    url = KIPRIS_API_BASE + "?" + urllib.parse.urlencode({
-        "applicationNumber": clean_no,
-        "ServiceKey": service_key,
-    })
-
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; PatentLawMCP/1.0)"})
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            raw_xml = resp.read().decode("utf-8", errors="replace")
-
-        root = ET.fromstring(raw_xml)
-        item = root.find(".//item")
-        if item is None:
-            return None
-
-        b = item.find("biblioSummaryInfoArray/biblioSummaryInfo") or item
-
-        def get_text(node: Optional[ET.Element], path: str) -> str:
-            if node is None:
-                return ""
-            n = node.find(path)
-            return (n.text or "").strip() if n is not None and n.text else ""
-
-        title = get_text(b, "inventionTitle") or get_text(item, "inventionTitle")
-        app_no = get_text(b, "applicationNumber") or get_text(item, "applicationNumber")
-        app_date = get_text(b, "applicationDate") or get_text(item, "applicationDate")
-        reg_no = get_text(b, "registerNumber") or get_text(item, "registerNumber")
-        reg_date = get_text(b, "registerDate") or get_text(item, "registerDate")
-        reg_status = get_text(b, "registerStatus") or "등록 (존속)"
-        ipc_code = get_text(b, "ipcNumber") or "A01G"
-        applicant = get_text(b, "applicantName") or "농촌진흥청"
-        abstract = get_text(b, "astrtCont")
-
-        claims = []
-        for cn in item.findall(".//claimInfoArray/claimInfo") or item.findall(".//claim"):
-            txt = get_text(cn, "claim") or (cn.text or "").strip()
-            if txt:
-                claims.append(txt)
-
-        return {
-            "title": title,
-            "application_number": app_no,
-            "application_date": app_date,
-            "register_number": reg_no,
-            "register_date": reg_date,
-            "register_status": reg_status,
-            "ipc_code": ipc_code,
-            "applicant": applicant,
-            "abstract": abstract,
-            "claims": claims or [abstract or f"{title}에 관한 독립항"],
-            "source": "KIPRIS Plus 공식 Open API (인증키 모드)",
-        }
-    except Exception:
-        return None
-
-
-def fetch_patent_smart(
-    patent_identifier: str,
-    api_key: Optional[str] = None,
-) -> Dict[str, Any]:
-    """[스마트 하이브리드 수집기]
-    1. KIPRIS API 키가 제공되면 -> KIPRIS Plus 공식 Open API로 자동 호출
-    2. API 키가 없으면 -> 구글 특허(Google Patents) 공개 웹 크롤러로 자동 수집 (Zero-API)
-    3. 네트워크 장애 시 -> 로컬 내장 데이터셋으로 안전하게 자동 폴백
+    auto 판정: 7·9자리 → 등록번호, 13자리 → 출원번호.
+    13자리 공개번호(10-YYYY-NNNNNNN)는 출원번호와 형식이 같으므로 number_type="publication"으로 지정해야 합니다.
     """
-    key = api_key or os.environ.get("KIPRIS_API_KEY")
+    raw = re.sub(r"[\s\-제호]", "", identifier.strip().upper())
+    m = re.fullmatch(r"KR(\d+)([AB]\d?)", raw)
+    if m:
+        digits, kind_code = m.groups()
+        if kind_code.startswith("B"):
+            inferred = "registration"
+        elif len(digits) == 13:
+            inferred = "application"
+        else:
+            inferred = "publication"
+            if len(digits) == 11:
+                digits = "10" + digits
+        if number_type == "auto":
+            number_type = inferred
+    else:
+        digits = re.sub(r"\D", "", raw)
 
-    # 1. KIPRIS API 키가 있으면 공식 API 우선 호출
-    if key:
-        kipris_result = fetch_from_kipris_api(patent_identifier, key)
-        if kipris_result:
-            return kipris_result
+    if number_type == "auto":
+        if len(digits) in (7, 9):
+            number_type = "registration"
+        elif len(digits) == 13:
+            number_type = "application"
+        else:
+            raise ValueError(f"'{identifier}'은(는) 인식할 수 없는 번호 형식입니다. 예: 10-2010-0062402(출원), 10-1070281(등록)")
 
-    # 2. 키가 없거나 API 호출 실패 시 구글 특허 공개 웹 크롤러 가동 (Zero-API 모드)
-    google_result = fetch_from_google_patents(patent_identifier)
-    if google_result and google_result.get("claims"):
-        return google_result
+    if len(digits) in (9, 13) and digits.startswith("20"):
+        raise ValueError("실용신안(20-)은 지원하지 않습니다. 특허(10-) 번호를 입력하십시오.")
 
-    # 3. 로컬 내장 데이터셋 폴백 확인
-    from patent_law_mcp.tools.document_parser import get_bundled_sample_patent
-    bundled = get_bundled_sample_patent(patent_identifier)
-    if bundled and "title" in bundled:
+    if number_type == "registration":
+        if len(digits) == 7:
+            digits = "10" + digits
+        elif len(digits) == 13 and digits.startswith("10") and digits.endswith("0000"):
+            digits = digits[:9]  # KIPRIS 등록번호 표기(10NNNNNNN0000)
+        if not (len(digits) == 9 and digits.startswith("10")):
+            raise ValueError(f"등록번호 형식이 아닙니다: '{identifier}' (예: 10-1070281)")
+        return KrPatentNumber("registration", digits, f"10-{digits[2:]}", f"KR{digits}B1")
+
+    if not (len(digits) == 13 and digits.startswith("10")):
+        raise ValueError(f"{_KIND_LABELS[number_type]} 형식이 아닙니다: '{identifier}' (예: 10-2010-0062402)")
+    year = int(digits[2:6])
+    if not 1948 <= year <= date.today().year + 1:
+        raise ValueError(f"번호의 연도({year})가 올바르지 않습니다: '{identifier}'")
+    display = f"10-{digits[2:6]}-{digits[6:]}"
+    google_id = f"KR{digits[2:]}A" if number_type == "publication" else None
+    return KrPatentNumber(number_type, digits, display, google_id)
+
+
+def _http_get(url: str, **kwargs: Any) -> httpx.Response:
+    return net.http_get(url, **kwargs)
+
+
+def _digits(text: str) -> str:
+    return re.sub(r"\D", "", text or "")
+
+
+def _format_app(d: str) -> str:
+    return f"{d[:2]}-{d[2:6]}-{d[6:13]}" if len(d) >= 13 else d
+
+
+def _format_reg(d: str) -> str:
+    return f"{d[:2]}-{d[2:9]}" if len(d) >= 9 else d
+
+
+# ---------------------------------------------------------------- Google Patents
+def parse_google_patents_html(html: str) -> Dict[str, Any]:
+    soup = BeautifulSoup(html, "html.parser")
+
+    def meta(name: str, scheme: Optional[str] = None) -> List[str]:
+        attrs = {"name": name, **({"scheme": scheme} if scheme else {})}
+        return [normalize_ws(m.get("content", "")) for m in soup.find_all("meta", attrs) if m.get("content")]
+
+    def first_meta(name: str) -> str:
+        values = meta(name)
+        return values[0] if values else ""
+
+    claims: List[str] = []
+    section = soup.find("section", {"itemprop": "claims"})
+    if section:
+        for div in section.find_all("div", class_="claim", attrs={"num": True}):
+            # 번호 있는 청구항 안에 중첩된 경우만 건너뜀 (US 페이지는 독립항을 번호 없는 div.claim으로 한 번 더 감쌈)
+            if div.find_parent("div", class_="claim", attrs={"num": True}):
+                continue
+            text = re.sub(r"^\d+\s*[.)]\s*", "", normalize_ws(div.get_text(" ", strip=True)))
+            if text:
+                claims.append(text)
+
+    abstract_div = soup.find("div", class_="abstract") or soup.find("section", {"itemprop": "abstract"})
+    filing = soup.find(itemprop="filingDate")
+    status = soup.find(itemprop="legalStatusIfi")
+    cpc = []
+    for li in soup.find_all("li", itemprop="classifications"):
+        code = li.find(itemprop="Code")
+        if li.find(itemprop="Leaf") and code and code.text.strip() not in cpc:
+            cpc.append(code.text.strip())
+
+    def number_part(value: str) -> str:
+        # "KR:1020080119257A" / "KR:101070281:B1" / "KR:20100062402:A" -> 국가코드·종류코드를 뺀 번호
+        m = re.search(r"KR:?(\d+)", value)
+        return m.group(1) if m else ""
+
+    events = []
+    for ev in soup.find_all(attrs={"itemprop": "events"}):
+        fields = {c.get("itemprop"): normalize_ws(c.get_text(" ", strip=True)) for c in ev.find_all(attrs={"itemprop": True})}
+        if fields.get("title"):
+            events.append({"date": fields.get("date", ""), "title": fields["title"], "type": fields.get("type", "")})
+
+    app_d = number_part(first_meta("citation_patent_application_number"))
+    reg_d = number_part(first_meta("citation_patent_number"))
+    pub_d = number_part(first_meta("citation_patent_publication_number"))
+
+    return {
+        "title": first_meta("DC.title"),
+        "application_number": _format_app(app_d) if app_d else "",
+        "application_date": filing.text.strip() if filing else "",
+        "register_number": _format_reg(reg_d) if reg_d else "",
+        "publication_number": _format_app("10" + pub_d) if len(pub_d) == 11 else "",
+        "applicants": meta("DC.contributor", "assignee"),
+        "inventors": meta("DC.contributor", "inventor"),
+        "register_status": f"{status.text.strip()} (Google 추정 상태, 공식 법적 상태 아님)" if status else "",
+        "ipc_codes": [],
+        "cpc_codes": cpc,
+        "abstract": normalize_ws(abstract_div.get_text(" ", strip=True)) if abstract_div else "",
+        "claims": claims,
+        "events": events,
+        "_meta_numbers": [v for v in (first_meta("citation_patent_number"), first_meta("citation_patent_publication_number")) if v],
+        "_check": {"application": app_d, "registration": reg_d, "publication": ("10" + pub_d) if len(pub_d) == 11 else ""},
+    }
+
+
+def fetch_from_google_patents(num: KrPatentNumber) -> Tuple[Optional[Dict[str, Any]], str]:
+    if not num.google_id:
+        return None, "Google Patents는 출원번호로 조회할 수 없습니다 (같은 숫자의 공개번호는 다른 특허입니다)."
+
+    url = GOOGLE_PATENTS_URL.format(gid=num.google_id)
+    headers = {"Accept-Language": "ko-KR,ko;q=0.9"}
+    resp = None
+    for attempt in range(2):
+        try:
+            resp = _http_get(url, headers=headers, follow_redirects=True, timeout=settings.request_timeout_seconds)
+        except httpx.HTTPError as e:
+            return None, f"Google Patents 접속 실패 ({type(e).__name__})"
+        if resp.status_code in (429, 503) and attempt == 0:
+            time.sleep(RETRY_DELAY_SECONDS)
+            continue
+        break
+
+    if resp.status_code == 404:
+        return None, f"Google Patents에 {num.google_id} 문서가 없습니다 (404)."
+    if resp.status_code != 200:
+        return None, f"Google Patents 응답 오류 (HTTP {resp.status_code}; 429·503은 일시적 접속 제한이므로 잠시 후 재시도)"
+
+    data = parse_google_patents_html(resp.text)
+    found = data["_check"].get(num.kind, "")
+    if found != num.digits:
+        return None, (
+            f"받은 문서의 {num.label}({found or '없음'})가 요청 번호({num.digits})와 달라 결과를 버렸습니다."
+        )
+    if not data["claims"]:
+        return None, "문서는 찾았지만 청구항을 읽지 못했습니다 (페이지 구조 변경 가능성)."
+    data["source"] = "Google Patents 공개 웹"
+    return data, f"Google Patents에서 {num.label} 일치 확인"
+
+
+# ---------------------------------------------------------------- KIPRIS Plus
+def _text(el: Optional[ET.Element], path: str) -> str:
+    if el is None:
+        return ""
+    n = el.find(path)
+    return (n.text or "").strip() if n is not None and n.text else ""
+
+
+def parse_kipris_xml(raw: bytes) -> Dict[str, Any]:
+    """KIPRIS getBibliographyDetailInfoSearch 응답 XML을 해석합니다 (patent-video-skill kipris.parse와 동일 경로)."""
+    root = ET.fromstring(raw)
+    item = root.find(".//item")
+    if item is None:
+        msg = _text(root, ".//resultMsg") or _text(root, ".//errMsg") or "응답에 특허 정보(item)가 없습니다."
+        raise LookupError(msg)
+
+    b = item.find("biblioSummaryInfoArray/biblioSummaryInfo")
+    ipc = [t for t in (_text(i, "ipcNumber") for i in item.findall("ipcInfoArray/ipcInfo")) if t]
+    reg_d = _digits(_text(b, "registerNumber"))
+    open_d = _digits(_text(b, "openNumber"))
+    return {
+        "title": _text(b, "inventionTitle"),
+        "application_number": _format_app(_digits(_text(b, "applicationNumber"))),
+        "application_date": _text(b, "applicationDate"),
+        "register_number": _format_reg(reg_d) if reg_d else "",
+        "register_date": _text(b, "registerDate"),
+        "publication_number": _format_app(open_d) if len(open_d) >= 13 else "",
+        "register_status": _text(b, "registerStatus"),
+        "ipc_codes": ipc,
+        "cpc_codes": [],
+        "applicants": [t for t in (_text(a, "name") for a in item.findall("applicantInfoArray/applicantInfo")) if t],
+        "inventors": [t for t in (_text(a, "name") for a in item.findall("inventorInfoArray/inventorInfo")) if t],
+        "abstract": _text(item, "abstractInfoArray/abstractInfo/astrtCont"),
+        "claims": [t for t in (_text(c, "claim") for c in item.findall("claimInfoArray/claimInfo")) if t],
+        "_check": {"application": _digits(_text(b, "applicationNumber"))},
+    }
+
+
+def fetch_from_kipris_api(application_digits: str, service_key: str) -> Tuple[Optional[Dict[str, Any]], str]:
+    try:
+        resp = _http_get(
+            KIPRIS_API_BASE,
+            params={"applicationNumber": application_digits, "ServiceKey": service_key},
+            timeout=settings.request_timeout_seconds,
+        )
+    except httpx.HTTPError as e:
+        return None, f"KIPRIS 접속 실패 ({type(e).__name__})"
+    if resp.status_code != 200:
+        return None, f"KIPRIS 응답 오류 (HTTP {resp.status_code})"
+    try:
+        data = parse_kipris_xml(resp.content)
+    except ET.ParseError:
+        return None, "KIPRIS 응답을 XML로 해석하지 못했습니다."
+    except LookupError as e:
+        return None, f"KIPRIS: {e} (인증키·출원번호를 확인하십시오)"
+
+    if data["_check"]["application"] != application_digits:
+        return None, f"KIPRIS가 다른 출원번호({data['_check']['application'] or '없음'})를 반환해 결과를 버렸습니다."
+    data["source"] = "KIPRIS Plus 공식 Open API"
+    return data, "KIPRIS에서 출원번호 일치 확인"
+
+
+# ---------------------------------------------------------------- 통합 조회
+def fetch_patent_smart(
+    patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
+    number_type: NumberType = "auto",
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    """출원·등록·공개번호로 특허 서지·초록·청구항을 조회하고, 받은 문서가 요청한 번호와 일치하는지 검증합니다.
+
+    Args:
+        patent_identifier: 특허번호 (예: "10-1070281", "10-2010-0062402", "KR101070281B1",
+            해외: "US10000000B2", "US 2020/0123456", "EP1000000B1", "WO 2020/123456")
+        number_type: 번호 종류 ("auto", "application"(출원), "registration"(등록), "publication"(공개)).
+            auto는 7·9자리를 등록번호, 13자리를 출원번호로 봅니다. 13자리 공개번호는 "publication"으로 지정하십시오.
+        refresh: True면 캐시를 무시하고 다시 조회
+
+    출원번호 조회에는 KIPRIS Plus 인증키(환경변수 KIPRIS_API_KEY)가 필요합니다.
+    확인하지 못하면 found=False와 시도 내역을 반환하며, 다른 특허를 대신 돌려주지 않습니다.
+    """
+    from patent_law_mcp.tools.foreign_patents import fetch_foreign_patent, is_foreign_identifier
+
+    if is_foreign_identifier(patent_identifier):
+        foreign_key = re.sub(r"[\s,./\-]", "", patent_identifier.upper())
+        if not refresh and (hit := cache.get("patent", f"foreign:{foreign_key}")):
+            return hit
+        result = fetch_foreign_patent(patent_identifier)
+        if result["found"]:
+            cache.put("patent", f"foreign:{foreign_key}", result)
+        return result
+
+    num = parse_kr_patent_number(patent_identifier, number_type)
+    key = settings.kipris_api_key
+    cache_key = f"{num.kind}:{num.digits}:{'kipris' if key else 'web'}"
+    if not refresh and (hit := cache.get("patent", cache_key)):
+        return hit
+    attempts: List[Dict[str, str]] = []
+    data: Optional[Dict[str, Any]] = None
+
+    if num.kind == "application":
+        if key:
+            data, msg = fetch_from_kipris_api(num.digits, key)
+            attempts.append({"source": "KIPRIS Plus", "result": msg})
+        else:
+            attempts.append({"source": "KIPRIS Plus", "result": "인증키(KIPRIS_API_KEY)가 설정되지 않아 조회하지 않음"})
+            attempts.append({"source": "Google Patents", "result": "출원번호로는 조회할 수 없음"})
+    else:
+        data, msg = fetch_from_google_patents(num)
+        attempts.append({"source": "Google Patents", "result": msg})
+        app_digits = data["_check"]["application"] if data else ""
+        if data and key and app_digits:
+            official, kmsg = fetch_from_kipris_api(app_digits, key)
+            attempts.append({"source": "KIPRIS Plus", "result": kmsg})
+            if official:
+                official["source"] = "KIPRIS Plus 공식 Open API (출원번호는 Google Patents에서 확인)"
+                data = official
+
+    requested = {"identifier": patent_identifier, "interpreted_as": num.label, "number": num.display}
+    if not data:
+        next_steps = []
+        if num.kind == "application":
+            next_steps.append("등록번호(10-XXXXXXX)나 공개번호로 다시 조회하거나, KIPRIS_API_KEY를 설정하십시오.")
+            next_steps.append("입력한 13자리 번호가 공개번호라면 number_type='publication'으로 지정하십시오.")
+        next_steps.append("KIPRIS 또는 공보 텍스트를 복사해 analyze_patent_document에 붙여넣을 수 있습니다.")
         return {
-            **bundled,
-            "source": "로컬 내장 국유특허 데이터셋 (오프라인 폴백)",
+            "found": False,
+            "requested": requested,
+            "error": f"{num.label} {num.display}의 특허 정보를 확인하지 못했습니다.",
+            "attempts": attempts,
+            "next_steps": next_steps,
         }
 
-    # 4. 최종 안전 폴백
-    return {
-        "title": f"특허 기술 분석 대상 ({patent_identifier})",
-        "application_number": patent_identifier,
-        "register_number": patent_identifier,
-        "register_status": "심사 정보 조회 완료",
-        "ipc_code": "A01G",
-        "applicant": "농촌진흥청/국가연구기관",
-        "abstract": f"{patent_identifier}에 관한 특허 기술 명세서 요약본입니다.",
-        "claims": [f"{patent_identifier} 기술의 핵심 독립 청구항 및 공정 구성요소."],
-        "source": "스마트 파서 시뮬레이션 폴백",
+    data.pop("_check", None)
+    data.pop("_meta_numbers", None)
+    applicants = data.get("applicants") or []
+    result = {
+        "found": True,
+        "requested": requested,
+        **data,
+        "applicant": ", ".join(applicants) if applicants else "미확인",
+        "ipc_code": (data.get("ipc_codes") or [""])[0],
+        "attempts": attempts,
     }
+    cache.put("patent", cache_key, result)
+    return result
 
 
 def inspect_and_summarize_by_appno(
-    patent_identifier: str,
-    api_key: Optional[str] = None,
+    patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
+    number_type: NumberType = "auto",
 ) -> Dict[str, Any]:
-    """출원번호나 등록번호 하나로 KIPRIS API 또는 구글 특허 공개 웹에서 자동 수집하여 원문 요약, TRL 진단, 60초 피치를 원스톱 실행합니다."""
-    patent_data = fetch_patent_smart(patent_identifier, api_key)
+    """특허번호로 원문을 조회·검증한 뒤 요약 초안과 TRL 판정 안내를 함께 만듭니다.
 
-    title = patent_data["title"]
-    abstract = patent_data.get("abstract", "")
-    claims = patent_data.get("claims", [])
-    applicant = patent_data.get("applicant", "농촌진흥청")
-    p_id = patent_data.get("register_number") or patent_data.get("application_number") or patent_identifier
+    Args:
+        patent_identifier: 특허번호 (출원번호는 KIPRIS_API_KEY 필요)
+        number_type: 번호 종류 ("auto", "application", "registration", "publication")
+    """
+    patent = fetch_patent_smart(patent_identifier, number_type)
+    if not patent["found"]:
+        return patent
 
-    # 고도화 요약기 구동
+    p_id = patent.get("register_number") or patent.get("application_number") or patent["requested"]["number"]
     summary = summarize_patent(
         patent_id=p_id,
-        title=title,
-        abstract=abstract,
-        claims=claims,
-        applicant=applicant,
+        title=patent.get("title", ""),
+        abstract=patent.get("abstract", ""),
+        claims=patent.get("claims", []),
+        applicant=patent.get("applicant"),
     )
-
-    # 사업화 TRL 진단 구동
-    trl = evaluate_commercialization(
-        technology_domain=summary["technology_type"],
-        claims_count=len(claims),
-        has_experimental_data=True,
-    )
-
     return {
         "metadata": {
-            "source": patent_data.get("source"),
-            "identifier_requested": patent_identifier,
-            "application_number": patent_data.get("application_number"),
-            "register_number": patent_data.get("register_number"),
-            "legal_status": patent_data.get("register_status", "등록"),
-            "ipc_code": patent_data.get("ipc_code"),
-            "applicant": applicant,
+            "source": patent["source"],
+            "requested": patent["requested"],
+            "application_number": patent.get("application_number"),
+            "register_number": patent.get("register_number"),
+            "publication_number": patent.get("publication_number"),
+            "legal_status": patent.get("register_status") or "미확인",
+            "ipc_codes": patent.get("ipc_codes"),
+            "cpc_codes": patent.get("cpc_codes"),
+            "applicant": patent.get("applicant"),
         },
         "summary": summary,
-        "commercialization_trl": trl,
+        "commercialization_trl": evaluate_commercialization(summary["technology_type"]),
     }

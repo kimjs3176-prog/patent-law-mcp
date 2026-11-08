@@ -1,154 +1,186 @@
-"""특허 패키징(Bundling) 및 수요기업 역매칭(Targeting) 실무 도구
+"""특허 패키징(Bundling) 및 수요기업 탐색(Targeting) 실무 도구
 
-농식품 및 공공 연구기관 특허의 기술이전 성공률을 극대화하기 위해:
-1. 원천-제조공정-응용 제품을 하나로 묶는 '특허 번들링(Bundling)' 제안서 구성
-2. 기술 특성 및 IPC/용도 기반 '수요기업 역매칭(Targeting)' 및 타겟 바이어 프로파일링
+1. 여러 특허를 하나의 기술이전 패키지로 묶을 때의 구성·역할 정리
+2. IPC 기반 표준산업분류(KSIC) 참고 매핑과 수요기업군 탐색 방향 제시
+
+근거 없는 수치(개발기간 단축, 감면율 등)는 만들지 않으며, 사용자가 준 값만 반영합니다.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
+from patent_law_mcp.tools.claim_utils import detect_technology_kind
 
-# IPC 기반 한국표준산업분류(KSIC) 및 유관 산업군 매핑 테이블
+# IPC 서브클래스 앞 3자리 → 한국표준산업분류(KSIC) 참고 매핑 (내장 범위: A01·A23·C12·B01)
 IPC_TO_KSIC_MAP = {
     "A01": {
         "sector": "농림어업 및 농업용 기계·설비 제조업",
         "ksic": ["A011 (작물 재배업)", "C2921 (농업 및 임업용 기계 제조업)", "C10 (식료품 제조업)"],
-        "buyer_traits": "스마트팜 설비 시공사, 농자재 전문 유통사, 농업회사법인, 지자체 농업기술센터 보급 사업 참여기업",
+        "buyer_traits": "스마트팜 설비 시공사, 농자재 유통사, 농업회사법인, 농업기술센터 보급사업 참여기업",
     },
     "A23": {
         "sector": "농축수산물 가공식품 및 건강기능식품 제조업",
         "ksic": ["C1079 (기타 식료품 제조업)", "C10797 (건강기능식품 제조업)", "C1080 (동물용 사료 제조업)"],
-        "buyer_traits": "식품 OEM/ODM 제조사, 건강기능식품 GMP 인증 공장 보유 기업, HMR 밀키트 개발사",
+        "buyer_traits": "식품 OEM/ODM 제조사, 건강기능식품 GMP 공장 보유 기업, HMR·밀키트 개발사",
     },
     "C12": {
-        "sector": "미생물, 발효, 바이오 의약 및 효소 산업",
-        "ksic": ["C2110 (기초 의약물질 및 생물학적 제제 제조업)", "C2042 (화장품 및 기능성 원료 제조업)"],
-        "buyer_traits": "천연물 바이오 벤처, 기능성 화장품 원료 제조사, 미생물 농약/비료 생산업체",
+        "sector": "미생물·발효·바이오 소재 산업",
+        "ksic": ["C2110 (기초 의약물질 및 생물학적 제제 제조업)", "C2042 (화장품 제조업)"],
+        "buyer_traits": "천연물 바이오 벤처, 기능성 화장품 원료사, 미생물 농약·비료 생산업체",
     },
     "B01": {
-        "sector": "물리화학적 분리, 여과, 농축 및 반응기 장치 산업",
-        "ksic": ["C2919 (일반 목적용 기계 제조업)", "C2929 (기타 특수 목적용 기계 제조업)"],
-        "buyer_traits": "플랜트 엔지니어링 설비사, 고압 추출기/원심분리기/건조기 전문 제작사",
+        "sector": "분리·여과·농축 및 반응기 장치 산업",
+        "ksic": ["C2919 (기타 일반 목적용 기계 제조업)", "C2929 (기타 특수 목적용 기계 제조업)"],
+        "buyer_traits": "플랜트 엔지니어링사, 추출기·원심분리기·건조기 제작사",
     },
 }
+
+_ROLE_LABELS = {
+    "method": "공정 특허 (Process)",
+    "apparatus": "장치 특허 (Apparatus)",
+    "composition": "소재·조성물 특허 (Composition)",
+    "mixed": "물건·방법 복합 특허",
+    "product": "물건 특허 (Product)",
+}
+
+
+class BundlePatent(BaseModel):
+    patent_id: str = Field(..., min_length=1, description="출원·등록번호")
+    title: str = Field(..., min_length=1, description="발명의 명칭")
+    role: Optional[str] = Field(None, description="패키지 내 역할 (비우면 명칭으로 자동 분류)")
+    applicant: Optional[str] = Field(None, description="출원인/특허권자")
+    status: Optional[str] = Field(None, description="권리 상태 (등록·공개 등)")
 
 
 def bundle_patents_for_transfer(
     package_title: str,
-    patents: List[Dict[str, str]],
-    target_industry: str = "농식품 가공 및 스마트팜",
-    discount_policy: str = "20% 패키지 일괄 감면",
+    patents: List[BundlePatent],
+    target_industry: Optional[str] = None,
+    discount_rate: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """여러 건의 특허(원천특허, 제조공정특허, 응용장치특허 등)를 하나의 강력한 기술이전 패키지로 묶어(Bundling) 포트폴리오를 구성합니다.
+    """여러 특허(공정·장치·소재 등)를 하나의 기술이전 패키지로 묶고 구성·역할을 정리합니다.
 
-    실무 효과:
-    - 단일 특허 도입 시의 회피설계 취약점을 차단
-    - 패키지 일괄 기술이전 시 기술료 할인 혜택으로 도입 기업의 진입 장벽 완화
+    Args:
+        package_title: 패키지 이름
+        patents: 묶을 특허 목록 (2건 이상)
+        target_industry: 목표 산업 (선택)
+        discount_rate: 패키지 일괄 감면율 0~1 (선택, 기관 기준이 있을 때만)
     """
-    classified_bundle = []
-    for idx, p in enumerate(patents, start=1):
-        title = p.get("title", f"특허 기술 {idx}")
-        p_id = p.get("patent_id", f"10-202X-00000{idx}")
-        role = p.get("role", "")
+    items = [p if isinstance(p, BundlePatent) else BundlePatent.model_validate(p) for p in patents]
+    if len(items) < 2:
+        raise ValueError("패키지는 특허 2건 이상으로 구성해야 합니다.")
+    ids = [p.patent_id.strip() for p in items]
+    if len(set(ids)) != len(ids):
+        raise ValueError("같은 특허번호가 중복되어 있습니다.")
+    if discount_rate is not None and not 0 <= discount_rate < 1:
+        raise ValueError("discount_rate는 0 이상 1 미만이어야 합니다 (예: 0.2 = 20%).")
 
-        # 역할 자동 추정
-        if not role:
-            if any(k in title for k in ["장치", "시스템", "모듈", "센서"]):
-                role = "장치 및 하드웨어 인프라 특허 (Apparatus)"
-            elif any(k in title for k in ["방법", "공정", "제조법", "추출"]):
-                role = "운전 및 제조공정 노하우 특허 (Process)"
-            else:
-                role = "원천 물질 및 기능성 용도 특허 (Core/Composition)"
-
-        classified_bundle.append({
+    bundle, kinds = [], set()
+    for idx, p in enumerate(items, start=1):
+        kind = detect_technology_kind(p.title)
+        kinds.add(kind)
+        bundle.append({
             "order": idx,
-            "patent_id": p_id,
-            "title": title,
-            "portfolio_role": role,
-            "applicant": p.get("applicant", "농촌진흥청/한국농업기술진흥원"),
-            "status": p.get("status", "등록"),
+            "patent_id": p.patent_id,
+            "title": p.title,
+            "portfolio_role": p.role or _ROLE_LABELS[kind],
+            "applicant": p.applicant or "미기재",
+            "status": p.status or "미확인",
         })
 
-    portfolio_synergy = [
-        "원천물질 및 추출공정, 제어장치가 상호 보완되어 제3자의 회피설계(Design-around)를 원천 차단",
-        "수요기업이 양산화 착수 시 별도 추가 라이선스 없이 완제품 생산 라인 풀세트 확보 가능",
-        f"패키지 일괄 계약 적용 시 기술료 감면 정책({discount_policy})을 통해 초기 투자비용 절감 유도",
-    ]
+    if len(kinds) >= 2:
+        synergy = (
+            "서로 다른 유형(공정·장치·소재 등)의 특허가 함께 묶여 있어, 한 건만 실시허락할 때보다 "
+            "회피설계 여지가 줄어들 수 있습니다. 실제 효과는 각 청구항을 대비해 확인하십시오."
+        )
+    else:
+        synergy = "같은 유형의 특허로만 구성되어 있어 패키지 보완 효과가 제한적일 수 있습니다. 청구항 범위가 겹치는지 확인하십시오."
 
     return {
         "package_title": package_title,
-        "target_industry": target_industry,
-        "bundled_patent_count": len(patents),
-        "bundled_patents": classified_bundle,
-        "portfolio_synergy_analysis": portfolio_synergy,
+        "target_industry": target_industry or "미지정",
+        "bundled_patent_count": len(bundle),
+        "bundled_patents": bundle,
+        "portfolio_synergy_analysis": synergy,
         "recommended_contract_structure": {
-            "license_type": "패키지 일괄 통상실시 또는 전용실시",
-            "bundling_discount": discount_policy,
-            "due_diligence_clause": "패키지 내 주력 특허(1번) 사업화 개시 시 패키지 전체의 불실시 해지특약 요건 충족 인정",
+            "license_type": "패키지 일괄 통상실시 (전용실시는 경쟁입찰 등 별도 요건 검토)",
+            "bundling_discount": (
+                f"{discount_rate:.0%} 일괄 감면 (기관 내부 기준 — 국유특허는 감면 근거 조항 확인 필요)"
+                if discount_rate is not None
+                else "감면율 미지정 (적용 시 근거 기준을 확인하십시오)"
+            ),
+            "due_diligence_clause_draft": "패키지 내 주력 특허의 사업화 개시를 패키지 전체 불실시 해지특약 판단에 반영할지 계약서에 명시",
         },
     }
 
 
+CompanySize = Literal["all", "sme", "startup", "middle"]
+
+_PERSONAS = [
+    {
+        "sizes": {"sme", "middle"},
+        "segment": "중소·중견 제조기업 (양산 라인 보유)",
+        "fit_reason": "기존 제조 설비와 유통망을 활용해 {product}에 빠르게 적용할 수 있는 기업군",
+        "licensing_strategy": "유상 통상실시 우선 검토. 전용실시는 경쟁입찰 원칙 등 요건 검토 후 결정",
+        "pitch_key": "국가연구기관 연구성과 기반 기술 — 실증 수준은 TRL 근거 자료로 제시",
+    },
+    {
+        "sizes": {"startup"},
+        "segment": "농식품·애그테크 벤처/스타트업",
+        "fit_reason": "신기술 기반 투자 유치·정부 사업화 과제 연계 수요가 있는 기업군",
+        "licensing_strategy": "미활용 국유특허 무상실시 요건 해당 여부 확인 (evaluate_unutilized_free_license)",
+        "pitch_key": "초기 기술료 부담 완화 방안(무상실시·분할납부 등) 안내",
+    },
+    {
+        "sizes": {"sme", "middle"},
+        "segment": "유통사 PB 및 OEM 제조 파트너",
+        "fit_reason": "차별화된 원료·공정 확보 수요가 있는 기업군",
+        "licensing_strategy": "통상실시 + 공동 후속 연구 협의",
+        "pitch_key": "청구항 권리범위 내 실시로 법적 안정성 확보",
+    },
+]
+
+
 def find_target_licensees_by_patent(
     technology_title: str,
-    ipc_code: Optional[str] = "A23L",
+    ipc_code: Optional[str] = None,
     target_product: Optional[str] = None,
-    preferred_company_size: str = "all",  # "sme", "startup", "middle", "all"
+    preferred_company_size: CompanySize = "all",
 ) -> Dict[str, Any]:
-    """특허의 기술 명칭, IPC 분류, 적용 목표 제품을 바탕으로 기술도입 유력 수요기업군(Targeting)을 도출합니다.
+    """특허 명칭·IPC·적용 제품으로 수요기업군 탐색 방향(KSIC 참고 매핑, 기업군, 발굴 채널)을 정리합니다.
 
-    실무 워크플로우:
-    - IPC 및 기술 키워드 기반 표준산업분류(KSIC) 매칭
-    - 기업 규모별 도입 니즈(스타트업: 소액/무상실시, 중소기업: 양산/공정개선, 대기업: 신사업/독점실시) 프로파일링
-    - 추천 매칭 채널 및 타겟 제안 포인트 제시
+    Args:
+        technology_title: 기술(발명) 명칭
+        ipc_code: IPC 분류 (예: "A23L 7/10"). 비우면 산업 매핑을 생략
+        target_product: 적용 목표 제품 (선택)
+        preferred_company_size: 대상 기업 규모 ("all", "sme", "startup", "middle")
     """
-    prefix = (ipc_code or "A23")[:3].upper()
-    sector_info = IPC_TO_KSIC_MAP.get(prefix, {
-        "sector": "일반 농산업 및 바이오 가공업",
-        "ksic": ["C10 (식료품 제조업)", "C29 (기계 및 장비 제조업)"],
-        "buyer_traits": "관련 제품 제조 및 OEM 전문 공장 운영 기업",
-    })
+    prefix = ipc_code.strip()[:3].upper() if ipc_code and ipc_code.strip() else ""
+    sector_info = IPC_TO_KSIC_MAP.get(prefix)
+    product = target_product or f"{technology_title} 적용 제품"
 
-    target_prod = target_product or f"{technology_title} 적용 신제품"
-
-    buyer_personas = [
-        {
-            "segment": "중소·중견 제조기업 (양산 라인 구축형)",
-            "priority": "최우선 추천 (1순위)",
-            "fit_reason": f"기존 제조 설비 및 유통망을 보유하고 있어, {target_prod} 개발 시 빠른 매출 실현 가능",
-            "licensing_strategy": "유상 통상실시 또는 3년 전용실시 (경상기술료율 1.5~2.2% 제안)",
-            "pitch_key": "자체 R&D 대비 개발 기간 18개월 단축 및 국가연구기관 검증 기술을 통한 시장 신뢰도 확보",
-        },
-        {
-            "segment": "농식품·애그테크 벤처/스타트업",
-            "priority": "추천 (2순위)",
-            "fit_reason": "신기술 기반 투자 유치(VC/팁스) 및 정부 R&D 사업화 과제 매칭 수요 높음",
-            "licensing_strategy": "미활용 국유특허 3년 무상실시(고시 제3조) 또는 분할납부 조건",
-            "pitch_key": "초기 기술료 부담 없는 무상실시 연계 및 벤처인증·공공조달 혁신시제품 가점 확보",
-        },
-        {
-            "segment": "플랫폼·유통사 PB 및 OEM 제조 파트너",
-            "priority": "전략적 추천 (3순위)",
-            "fit_reason": "소비자 트렌드에 맞춘 차별화 원료/공정 확보 필요",
-            "licensing_strategy": "전용실시 협약 및 공동 R&D 후속 과제 기획",
-            "pitch_key": "특허 권리범위 보호를 통한 독점적 시장 진입 및 안전성 검증 완료",
-        },
-    ]
-
-    sourcing_channels = [
-        "한국농업기술진흥원 기술이전계약관리 플랫폼(NATI) 수요기업 풀",
-        "중소벤처기업진흥공단 및 농식품모태펀드 피투자기업 디렉토리",
-        "식품의약품안전처 기능성 원료 및 식품첨가물 제조 허가 기업 목록",
-        "조달청 혁신장터 및 나라장터 농업용 기계·설비 입찰 참여기업 풀",
+    personas = [
+        {k: (v.format(product=product) if isinstance(v, str) else v) for k, v in p.items() if k != "sizes"}
+        for p in _PERSONAS
+        if preferred_company_size == "all" or preferred_company_size in p["sizes"]
     ]
 
     return {
         "technology_title": technology_title,
-        "classified_sector": sector_info["sector"],
-        "matched_ksic_codes": sector_info["ksic"],
-        "target_product": target_prod,
-        "target_buyer_personas": buyer_personas,
-        "recommended_sourcing_channels": sourcing_channels,
-        "action_guide": "상기 타겟 기업군 풀을 대상으로 60초 엘리베이터 피치 및 특허 요약서를 첨부한 1-Pager 기술제안서(SMK) 발송 권장",
+        "ipc_code": ipc_code or "미기재",
+        "classified_sector": sector_info["sector"] if sector_info else "내장 매핑에 없는 분류 (KSIC 직접 확인 필요)",
+        "matched_ksic_codes": sector_info["ksic"] if sector_info else [],
+        "buyer_traits": sector_info["buyer_traits"] if sector_info else None,
+        "mapping_note": "IPC→KSIC는 A01·A23·C12·B01만 수록한 참고용 매핑입니다.",
+        "target_product": product,
+        "preferred_company_size": preferred_company_size,
+        "target_buyer_personas": personas,
+        "recommended_sourcing_channels": [
+            "한국농업기술진흥원 기술이전계약관리 플랫폼(NATI) 수요기업 풀",
+            "중소벤처기업진흥공단 및 농식품모태펀드 피투자기업 목록",
+            "식품의약품안전처 기능성 원료·식품첨가물 제조 허가 기업 목록",
+            "조달청 혁신장터·나라장터 농업용 기계·설비 입찰 참여기업",
+        ],
+        "action_guide": "기업군별로 특허 요약서와 청구항 대비표를 첨부해 기술 제안서를 발송하십시오.",
     }

@@ -1,53 +1,99 @@
-# 지식재산처 및 공공특허 기술이전·처분 실무 행정규칙 정책 테이블
-# 법령 및 고시가 개정될 경우, 파이썬 코드를 수정할 필요 없이 본 파일의 수치와 조항만 갱신하면 MCP 전반에 즉시 반영됩니다.
+# 국유특허 기술이전·처분·보상 실무 기준 정책 테이블
+#
+# - 법령·고시가 바뀌면 이 파일만 고치면 됩니다. 파일이 바뀌면 다음 도구 호출 때 자동으로 다시 읽습니다.
+# - 필수 키가 빠지거나 형식이 틀리면 서버가 오류를 내고 멈춥니다 (조용히 기본값을 쓰지 않음).
+# - 다른 파일을 쓰려면 환경변수 PATENT_LAW_MCP_POLICY_FILE에 경로를 지정하십시오.
+# - verification_notes의 항목은 원문 대조가 끝나면 지우십시오. 도구 출력에 그대로 표시됩니다.
 
 metadata:
+  profile_type: "national"
   notice_name: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령"
   notice_id: "지식재산처고시 제2025-4호"
   effective_date: "2025-10-30"
-  governing_law: "발명진흥법 제15조 및 공무원 직무발명의 처분·관리 및 보상 등에 관한 규정(대통령령)"
+  parent_regulation: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 (대통령령, 2025.10.01. 시행)"
+  competent_authority: "지식재산처"
 
-# 제3조 및 제7조: 미활용 국유특허 무상실시 및 중소기업 재계약 우대
+verification_notes:
+  - "고시(제2025-4호) 원문 미대조: 고시 조항번호와 300만 원·60일·30일·3년 기준은 원문 확인 필요"
+  - "처분보상금: 규정 제17조는 비율을 처분수입금의 50% '범위'로 정함 — 고정 50% 적용과 직접비용 공제 여부는 고시 원문 확인 필요"
+  - "중소기업 재계약 우대: '기본율 2%p 인하'인지 '기본율을 2%로 인하'인지 고시 원문 확인 필요"
+  - "기업 규모별 요율(contract_practice.reference_rates_by_scale)은 기관 내부 참고값이며 법정 요율이 아님"
+
+# 출력에 표기되는 근거 조항 — 조항 번호가 바뀌면 여기만 고치십시오.
+articles:
+  free_license: "고시 제3조"
+  joint_patentee_consent: "고시 제4조 제4항"
+  licensee_limit: "고시 제5조"
+  free_license_paid_conversion: "고시 제6조 제1항"
+  sme_renewal_rate: "고시 제7조"
+  exclusive_minimum_royalty: "고시 제9조"
+  exclusive_renewal: "고시 제10조"
+  exclusive_renewal_private_contract: "규정 제11조 제2항 제4호"
+  registration_compensation: "규정 제16조"
+  disposal_compensation: "규정 제17조, 고시 제11조"
+  exclusive_competitive_bidding: "규정 제11조 제2항"
+  non_exclusive_private_contract: "규정 제11조 제1항"
+  free_disposal_grounds: "규정 제10조 제2항"
+  exclusive_license_registration: "특허법 제101조"
+  tax_free_limit: "소득세법 제12조, 같은 법 시행령 제17조의3"
+
+# 미활용 국유특허 무상 통상실시
 unutilized_free_license:
-  unutilized_years_threshold: 3      # 등록 후 미활용 판정 기준 (연)
-  max_free_license_years: 3          # 최대 무상실시 보장 기간 (연)
-  allow_free_extension: false        # 3년 초과 시 무상 연장 불가 (유상 전환 필수)
-  sme_renewal_discount_rate: 0.02    # 중소기업 재계약 시 실시료 산정 기본율 인하폭 (2%p)
-  joint_patentee_written_consent_required: true  # 민간 공동권리자 서면 동의서 필수 여부 (제4조 제4항)
+  unutilized_years_threshold: 3        # 등록 후 미실시 기간 기준 (년)
+  max_free_license_years: 3            # 무상실시 최대 기간 (년)
+  sme_renewal_base_rate_reduction_pp: 2  # 중소기업 재계약 시 실시료 기본율 인하폭 (%p) — 원문 확인 필요
+  joint_patentee_written_consent_required: true
 
-# 제9조: 전용실시 최소실시료 및 납부 기한 강행규정
+# 전용실시 (고시·규정 기준)
 exclusive_licensing:
-  minimum_royalty_amount: 3000000    # 전용실시 최소실시료 하한선 (300만 원)
-  payment_deadline_days: 60          # 계약 체결일로부터 납부 기한 (일)
-  exclusive_lump_sum_multiplier: 2.5 # 통상실시 대비 선급기술료 배율
-  exclusive_running_multiplier: 1.5  # 통상실시 대비 경상기술료 배율
-  standard_rates_by_scale:
+  minimum_royalty_amount: 3000000      # 전용실시 최소실시료 (원)
+  payment_deadline_days: 60            # 계약 체결일부터 납부 기한 (일)
+  competitive_bidding_required: true   # 전용실시권 설정은 경쟁입찰 원칙 (규정 제11조 제2항)
+
+# 계약 실무 기준 (기관 내부 기준 — 법정 기준 아님)
+contract_practice:
+  due_diligence_years: 2               # 불실시 해지특약: 계약일부터 사업화 착수 기한 (년)
+  sales_report_deadline_days: 60       # 사업연도 종료 후 매출 보고 기한 (일)
+  exclusive_lump_sum_multiplier: 2.5   # 통상실시 대비 전용실시 선급기술료 배율
+  exclusive_running_multiplier: 1.5    # 통상실시 대비 전용실시 경상기술료 배율
+  reference_rates_by_scale:
     farmer:
       lump_sum: 0
-      running_rate: 0.000
-      description: "농업인 및 소상공인 무상실시 대상 (고시 제3조)"
+      running_rate: 0.0
+      description: "농어업인 — 무상 처분 사유(규정 제10조 제2항) 해당 여부 검토"
     sme:
       lump_sum: 3000000
       running_rate: 0.015
-      description: "중소기업 기준 우대 요율 (경상 1.5%~2.0%)"
+      description: "중소기업 참고 요율"
     middle:
       lump_sum: 10000000
       running_rate: 0.025
-      description: "중견기업 기준 요율 (경상 2.5%)"
+      description: "중견기업 참고 요율"
     large:
       lump_sum: 30000000
-      running_rate: 0.040
-      description: "대기업 기준 요율 (경상 4.0%)"
+      running_rate: 0.04
+      description: "대기업 참고 요율"
 
-# 제10조: 전용실시계약 갱신 요건
+# 전용실시계약 갱신
 exclusive_renewal:
-  application_deadline_days_before_expiry: 30  # 만료 전 신청 기한 (일)
-  statutory_grounds_count: 5                   # 법정 갱신 사유 개수 (투자금 미회수, 인허가 등)
+  application_deadline_days_before_expiry: 30   # 만료 전 신청 기한 (일)
 
-# 제11조 및 소득세법 제12조: 처분보상금 산정 및 비과세 한도
+# 등록보상금 (규정 제16조: 권리마다 지급, 같은 직무발명에는 한 번만)
+registration_compensation:
+  patent: 500000
+  utility_model: 300000
+  design: 200000
+
+# 처분보상금
 disposal_compensation:
-  net_income_payout_ratio: 0.50                # 직접비용 공제 후 순수입금 대비 보상금 비율 (50%)
-  tax_free_limit_annual: 7000000               # 소득세법상 직무발명보상금 비과세 한도 (연간 700만 원)
-  mandatory_deductions:
+  payout_ratio: 0.5                    # 처분수입금(또는 순수입) 대비 보상금 비율
+  deduct_direct_expenses: true         # true: 직접비용 공제 후 순수입 기준 — 원문 확인 필요
+  deductible_items:
     - "특허 등록 및 유지 관납료"
     - "기술이전 중개 수수료 및 가치평가 직접비용"
+
+# 직무발명보상금 소득세
+income_tax:
+  tax_free_limit_annual: 7000000       # 직무발명보상금 비과세 한도 (연간, 재직·퇴직 합산)
+  retired_withholding_rate: 0.22       # 퇴직 후 수령분(기타소득) 원천징수율: 소득세 20% + 지방소득세 2%
+  local_income_tax_ratio: 0.1          # 지방소득세 = 소득세 × 10%

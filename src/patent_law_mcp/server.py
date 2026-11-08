@@ -1,169 +1,239 @@
 """Patent Law MCP 메인 서버 (FastMCP 기반)
 
-공공·국유 특허 기술이전 실무 및 지식재산처 최신 업무편람·고시(제2025-4호) 특화
+공공·국유 특허 기술이전 실무 및 국가공무원 등 직무발명 처분·보상 실무 보조 도구
 
 [면책 조항]
 본 MCP 서버는 변리사의 출원·심사 대리 업무를 대신하지 않으며,
 공공연구기관 및 국가직무발명의 기술이전 계약 실무, 처분·보상 행정 절차,
-도입 기업 제품과의 권리범위 매칭 검토를 보조하기 위한 전문 실무 도구입니다.
+도입 기업 제품과의 권리범위 1차 대조를 보조하기 위한 도구입니다.
 """
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
-# 기존 도구 모듈 임포트
-from patent_law_mcp.tools.contract_practice import (
-    design_licensing_terms,
-    review_licensing_contract,
-)
-from patent_law_mcp.tools.employee_invention_practice import (
-    process_invention_disclosure,
-    calculate_disposal_compensation,
-    evaluate_unutilized_free_license,
-    evaluate_exclusive_renewal,
-)
-from patent_law_mcp.tools.claims_practice import (
-    verify_tech_transfer_scope_match,
-)
+from patent_law_mcp.policies.policy_manager import get_policy_table
 from patent_law_mcp.tools.analysis import (
-    summarize_patent,
     evaluate_commercialization,
+    ground_patent_applications,
+    ground_summary_figures,
+    summarize_patent,
 )
-from patent_law_mcp.tools.recommendation import (
-    find_patents_by_business_need,
-    recommend_similar_patents,
-    recommend_free_transfer_patents,
-)
-
-# 신규 고도화 도구 모듈 임포트
-from patent_law_mcp.tools.kipris_connector import (
-    fetch_patent_smart,
-    inspect_and_summarize_by_appno,
-)
-from patent_law_mcp.tools.bundling_and_targeting import (
-    bundle_patents_for_transfer,
-    find_target_licensees_by_patent,
+from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
+from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
+from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
+from patent_law_mcp.tools.deadlines import (
+    calculate_annuity_schedule,
+    calculate_patent_deadline,
+    calculate_patent_term,
+    check_patent_rights_status,
 )
 from patent_law_mcp.tools.document_parser import (
-    parse_raw_patent_text,
     analyze_patent_document,
     get_bundled_sample_patent,
+    parse_raw_patent_text,
 )
+from patent_law_mcp.tools.employee_invention_practice import (
+    calculate_disposal_compensation,
+    evaluate_exclusive_renewal,
+    evaluate_unutilized_free_license,
+    process_invention_disclosure,
+)
+from patent_law_mcp.tools.kipris_connector import fetch_patent_smart, inspect_and_summarize_by_appno
+from patent_law_mcp.tools.law_lookup import get_law_article, search_laws
+from patent_law_mcp.tools.patent_search import search_patents
 
-# FastMCP 서버 생성
 mcp = FastMCP(
     name="patent-law-mcp",
     instructions=(
-        "공공·국유 특허 기술이전 계약 및 지식재산처 업무편람(고시 제2025-4호) 특화 기술거래 실무 MCP 서버. "
-        "(출원·심사 대리가 아닌 기술이전·처분 실무 보조 도구)"
+        "특허 기술이전·직무발명 보상·권리 관리 실무 보조 MCP 서버. 기관 유형별 프로파일(national 국유특허, "
+        "public_research 대학·출연연, private_company 민간 기업)을 profile 인자나 PATENT_LAW_MCP_PROFILE로 선택합니다. "
+        "도구가 found=False·warnings·'미확인'을 반환하면 그 사실을 그대로 전달하고, 특허번호·출원인·수치를 추측해 채우지 마십시오. "
+        "법령·고시 기준값은 policies/kipo_notice_rules.yaml에 있으며, verification_notes에 원문 확인이 필요한 항목이 표시됩니다."
     ),
 )
 
-# 0. Zero-API 공보 텍스트 스마트 파서 및 종합 분석 도구 (복사·붙여넣기 지원)
-mcp.tool(
-    name="analyze_patent_document",
-    description="복사한 공보 텍스트에서 요약서, 스펙 칩, TRL 진단, 60초 바이어 피치, 수요기업 타겟팅까지 원스톱 실행 (Zero-API)",
-)(analyze_patent_document)
-
-mcp.tool(
-    name="parse_raw_patent_text",
-    description="복사한 공보 텍스트에서 발명의 명칭, 출원/등록번호, 출원인, IPC, 초록, 청구항을 자동 분해 (Zero-API)",
-)(parse_raw_patent_text)
-
-mcp.tool(
-    name="get_bundled_sample_patent",
-    description="내장된 KOAT·농진청 핵심 국유특허 샘플 데이터를 즉시 로드 (완전 오프라인/테스트용)",
-)(get_bundled_sample_patent)
-
-# 1. 기술실시계약 실무 도구 등록
-mcp.tool(
-    name="design_licensing_terms",
-    description="지식재산처 고시 기준 전용실시 최소실시료(300만원/60일 이내) 및 전용/통상실시 계약조건 산출",
-)(design_licensing_terms)
-
-mcp.tool(
-    name="review_licensing_contract",
-    description="기술실시계약서 초안 조항 검토 및 지식재산처 승인·사후 감사 리스크 체크리스트 점검",
-)(review_licensing_contract)
-
-# 2. 직무발명 및 국유특허 처분 실무 도구 등록
-mcp.tool(
-    name="process_invention_disclosure",
-    description="직무발명 신고 접수 및 직무범위성 심의위원회 상정 안건 작성 (지식재산처 업무편람 서식)",
-)(process_invention_disclosure)
-
-mcp.tool(
-    name="calculate_disposal_compensation",
-    description="지식재산처 고시 제11조에 따른 직접비용 공제 후 순수입 50% 처분보상금 산출 및 세액 명세표 작성",
-)(calculate_disposal_compensation)
-
-mcp.tool(
-    name="evaluate_unutilized_free_license",
-    description="등록 후 3년 미실시 국유특허의 3년 무상 통상실시 및 중소기업 재계약 시 기본율 2% 우대요율 심의 (고시 제3조·제7조)",
-)(evaluate_unutilized_free_license)
-
-mcp.tool(
-    name="evaluate_exclusive_renewal",
-    description="국유특허 전용실시계약의 5대 법정 갱신 사유(투자금 미회수 등) 및 만료 30일 전 신청 요건 심의 (고시 제10조)",
-)(evaluate_exclusive_renewal)
-
-# 3. 기술이전 권리범위 매칭 실무 도구 등록
-mcp.tool(
-    name="verify_tech_transfer_scope_match",
-    description="기술이전 계약 체결 전, 도입 희망 기업 제품과 특허 청구항 권리범위 매칭 및 실시권 필요성 검토",
-)(verify_tech_transfer_scope_match)
-
-# 4. 특허 분석 실무 도구 등록
-mcp.tool(
-    name="summarize_patent",
-    description="특허 원문 근거 기술 요약서 생성 및 AI 환각 수치 그라운딩 보정, 60초 브리핑 피치 대본 생성",
-)(summarize_patent)
-
-mcp.tool(
-    name="evaluate_commercialization",
-    description="특허 기술성숙도(TRL 1~9) 및 시장 사업화 가능성 진단",
-)(evaluate_commercialization)
-
-# 5. 특허 추천 실무 도구 등록
-mcp.tool(
-    name="find_patents_by_business_need",
-    description="기업 주력 품목 및 도입 목적에 꼭 맞는 국유/공공특허 매칭 추천",
-)(find_patents_by_business_need)
-
-mcp.tool(
-    name="recommend_similar_patents",
-    description="기준 특허와 기술적·기능적으로 유사한 특허 후보 추천",
-)(recommend_similar_patents)
-
-mcp.tool(
-    name="recommend_free_transfer_patents",
-    description="중소기업 및 농업인 대상 무상기술이전(나눔특허, 국유특허 무상실시) 추천",
-)(recommend_free_transfer_patents)
-
-# 6. 특허 패키징(Bundling) 및 수요기업 역매칭(Targeting) 도구
-mcp.tool(
-    name="bundle_patents_for_transfer",
-    description="원천·공정·장치 특허를 묶어 회피설계를 방지하고 일괄 감면율을 적용하는 기술이전 패키지 제안서 구성",
-)(bundle_patents_for_transfer)
-
-mcp.tool(
-    name="find_target_licensees_by_patent",
-    description="특허 IPC 및 제품 분야 기반 표준산업분류(KSIC) 매칭, 유력 수요기업군(양산/스타트업) 타겟팅 전략 도출",
-)(find_target_licensees_by_patent)
-
-# 7. 하이브리드 특허 원문 자동 수집 도구 (출원번호 1줄로 수집: Zero-API 웹 크롤링 <-> KIPRIS 키 전환)
-mcp.tool(
-    name="fetch_patent_smart",
-    description="출원/등록번호로 자동 수집 (평소엔 구글특허 공개웹 크롤링, KIPRIS 키 제공 시 KIPRIS 공식 API로 자동 전환)",
-)(fetch_patent_smart)
-
-mcp.tool(
-    name="inspect_and_summarize_by_appno",
-    description="출원번호 하나로 자동 수집(웹 크롤러 또는 KIPRIS API)부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
-)(inspect_and_summarize_by_appno)
+LOCAL = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
+NETWORK = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
 
-def main():
-    mcp.run()
+def register(fn, name: str, description: str, annotations: ToolAnnotations = LOCAL) -> None:
+    mcp.tool(name=name, description=description, annotations=annotations)(fn)
+
+
+# 0. 특허 검색·원문 확보·법령 조회 (실데이터)
+register(
+    search_patents,
+    "search_patents",
+    "KIPRIS Plus 공식 API로 한국 특허 검색 (키워드 또는 출원인+명칭, KIPRIS_API_KEY 필요). 결과는 가공·재정렬하지 않음",
+    NETWORK,
+)
+register(
+    search_laws,
+    "search_laws",
+    "국가법령정보센터에서 법령(법률·시행령·시행규칙) 또는 행정규칙(고시 등) 검색 (LAW_OC 필요)",
+    NETWORK,
+)
+register(
+    get_law_article,
+    "get_law_article",
+    "법령명과 조문 번호로 현행 조문 원문(항·호·목)과 시행일 조회 (예: 특허법 제100조, LAW_OC 필요)",
+    NETWORK,
+)
+register(
+    fetch_patent_smart,
+    "fetch_patent_smart",
+    "출원·등록·공개번호로 특허 서지·초록·청구항 조회. 받은 문서의 번호가 요청과 일치하는지 검증하며, "
+    "확인 못 하면 found=False 반환 (출원번호는 KIPRIS_API_KEY 필요, 등록·공개번호는 Google Patents)",
+    NETWORK,
+)
+register(
+    inspect_and_summarize_by_appno,
+    "inspect_and_summarize_by_appno",
+    "특허번호로 원문 조회·검증 후 요약 초안까지 실행 (조회 실패 시 요약하지 않고 사유 반환)",
+    NETWORK,
+)
+register(
+    parse_raw_patent_text,
+    "parse_raw_patent_text",
+    "붙여넣은 공보·명세서 텍스트에서 명칭·출원/등록/공개번호·출원인·IPC·초록·청구항 분해 (찾지 못한 항목은 warnings로 안내)",
+)
+register(
+    analyze_patent_document,
+    "analyze_patent_document",
+    "붙여넣은 공보 텍스트를 파싱해 요약 초안·TRL 안내·수요기업 탐색 참고자료를 함께 생성 (외부 API 불필요)",
+)
+register(
+    get_bundled_sample_patent,
+    "get_bundled_sample_patent",
+    "도구 시연·테스트용 가상 샘플 특허 로드 (실존 특허 아님)",
+)
+
+# 1. 분석·요약
+register(
+    summarize_patent,
+    "summarize_patent",
+    "특허 원문(명칭·초록·청구항·명세서)에서 문장을 발췌해 기술이전 상담용 요약 초안과 기술소개영상 시그니처 유형 추천 생성 "
+    "(원문에 없는 효과·수치는 만들지 않음)",
+)
+register(
+    ground_summary_figures,
+    "ground_summary_figures",
+    "작성된 요약문에서 원문에 없는 효과 수치('30% 절감', '2배 향상', '3시간 단축' 등)가 든 문장을 '추가 검증 필요'로 교체 "
+    "(patent-summary-wizard summaryGrounding 규칙)",
+)
+register(
+    ground_patent_applications,
+    "ground_patent_applications",
+    "제안된 활용 용도를 원문 발췌와 대조해 청구항 명시 용도·명세서 일반 용도·근거 미확인으로 분류 "
+    "(patent-summary-wizard applicationGrounding 규칙)",
+)
+register(
+    evaluate_commercialization,
+    "evaluate_commercialization",
+    "실증 근거 수준 또는 요약서 상용화전망 서술로 TRL 판정, 제시 TRL이 서술 단계와 어긋나면 보정 "
+    "(patent-summary-wizard trlConsistency 규칙)",
+)
+
+# 2. 기술실시계약
+register(
+    design_licensing_terms,
+    "design_licensing_terms",
+    "통상·전용실시 계약조건 초안 산출 (예상 매출 기준 경상기술료 추정, 국유특허 프로파일은 최소실시료·경쟁입찰 원칙 반영)",
+)
+register(
+    review_licensing_contract,
+    "review_licensing_contract",
+    "기술실시계약서 초안의 필수 조항 포함 여부 1차 점검 (부정·면제 문구는 '확인 필요'로 표시, 최종 법무 검토 필요)",
+)
+
+# 3. 직무발명·국유특허 처분
+register(
+    process_invention_disclosure,
+    "process_invention_disclosure",
+    "직무발명 신고 접수 및 승계 심의 안건 초안 작성 (국유특허·대학/출연연·민간 기업 프로파일)",
+)
+register(
+    calculate_disposal_compensation,
+    "calculate_disposal_compensation",
+    "기술료 수입 기준 발명자 보상금 산출 및 발명자별 비과세·과세 구분 (재직 근로소득 / 퇴직 기타소득). "
+    "profile: national(국유특허 처분보상금)·public_research·private_company",
+)
+register(
+    evaluate_unutilized_free_license,
+    "evaluate_unutilized_free_license",
+    "[국유특허 전용] 등록 후 일정 기간 미실시된 국유특허의 무상 통상실시 해당 여부와 후속 유상 전환 조건 검토",
+)
+register(
+    evaluate_exclusive_renewal,
+    "evaluate_exclusive_renewal",
+    "[국유특허 전용] 전용실시계약 갱신 검토 (투자금 미회수·인허가 시험 진행 사유 자동 판정, 신청 기한 확인)",
+)
+
+register(
+    get_policy_table,
+    "get_policy_table",
+    "프로파일(national·public_research·private_company)별 기준값(최소실시료·보상 비율·비과세 한도 등), 근거 조항, 원문 확인 필요 항목 조회",
+)
+
+# 4. 기한·권리 관리 계산기
+register(
+    calculate_patent_deadline,
+    "calculate_patent_deadline",
+    "특허 절차 기한 계산 (특허법 제14조: 첫날 불산입·역 계산·공휴일이면 다음 날). 조약/국내우선권 12개월, PCT 31개월, "
+    "심사청구 3년, 공지예외 12개월 또는 임의 개월·일수",
+)
+register(
+    calculate_patent_term,
+    "calculate_patent_term",
+    "출원일 기준 존속기간 만료일 계산 (특허 20년·실용신안 10년, 연장 일수 반영)",
+)
+register(
+    calculate_annuity_schedule,
+    "calculate_annuity_schedule",
+    "설정등록일 기준 연차료 납부기한·추가납부기간·회복 신청 가능기간과 현재 상태 계산 (금액은 계산하지 않음)",
+)
+register(
+    check_patent_rights_status,
+    "check_patent_rights_status",
+    "특허번호로 서지·상태 조회(번호 검증) 후 존속기간 만료일과 연차료 상태 정리",
+    NETWORK,
+)
+
+# 5. 권리범위·포트폴리오·수요기업
+register(
+    verify_tech_transfer_scope_match,
+    "verify_tech_transfer_scope_match",
+    "청구항 구성요소와 도입 희망 기업 제품 설명의 키워드 1차 대조 (부정 표현 반영, 침해 감정 아님)",
+)
+register(
+    bundle_patents_for_transfer,
+    "bundle_patents_for_transfer",
+    "여러 특허(공정·장치·소재)를 기술이전 패키지로 묶고 유형별 역할과 계약 구조 초안 정리",
+)
+register(
+    find_target_licensees_by_patent,
+    "find_target_licensees_by_patent",
+    "IPC 기반 KSIC 참고 매핑과 기업 규모별 수요기업군·발굴 채널 정리",
+)
+
+
+def main(argv=None):
+    import argparse
+    import os
+
+    ap = argparse.ArgumentParser(prog="patent-law-mcp", description="특허 실무 MCP 서버")
+    ap.add_argument("--transport", choices=["stdio", "streamable-http"], default=os.environ.get("PATENT_LAW_MCP_TRANSPORT", "stdio"))
+    ap.add_argument("--host", default=os.environ.get("PATENT_LAW_MCP_HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PATENT_LAW_MCP_PORT", "8000")))
+    ap.add_argument("--allowed-host", action="append", default=[], help="외부 접속 Host 헤더 허용 (예: mcp.example.org)")
+    args = ap.parse_args(argv)
+
+    if args.transport == "stdio":
+        mcp.run()
+        return
+    from patent_law_mcp.http_app import serve_http
+
+    serve_http(mcp, args.host, args.port, args.allowed_host)
 
 
 if __name__ == "__main__":

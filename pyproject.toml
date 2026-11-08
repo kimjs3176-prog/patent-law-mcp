@@ -1,7 +1,7 @@
 [project]
 name = "patent-law-mcp"
-version = "0.1.0"
-description = "특허 분석·검색 및 국가직무발명 처분·기술이전 법령 특화 Model Context Protocol (MCP) 서버"
+version = "0.2.0"
+description = "공공·국유 특허 기술이전 및 국가공무원 등 직무발명 처분·보상 실무 보조 MCP 서버"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
@@ -14,6 +14,7 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "lxml>=5.0.0",
     "pyyaml>=6.0.3",
+    "holidays>=0.60",
 ]
 
 [project.scripts]
@@ -22,3 +23,11 @@ patent-law-mcp = "patent_law_mcp.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
