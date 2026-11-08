@@ -33,38 +33,38 @@ def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
 
     # 1. 발명의 명칭 추출
     title_match = re.search(
-        r"(?:【발명의\s*명칭】|\(54\)\s*발명의\s*명칭|발명의\s*명칭\s*[:：])\s*([^\n\r]+)",
+        r"(?:【발명의\s*명칭】|\(54\)\s*발명의\s*명칭|발명의\s*명칭)\s*[:：]?\s*([^\n\r]+)",
         clean,
     )
-    title = title_match.group(1).strip() if title_match else ""
+    title = title_match.group(1).strip().lstrip(":：").strip() if title_match else ""
 
     # 2. 출원번호 추출
     appno_match = re.search(
-        r"(?:【출원번호】|\(21\)\s*출원번호|출원번호\s*[:：])\s*([0-9\-\s]+)",
+        r"(?:【출원번호】|\(21\)\s*출원번호|출원번호)\s*[:：]?\s*([0-9\-\s]+)",
         clean,
     )
     application_number = re.sub(r"\s+", "", appno_match.group(1).strip()) if appno_match else ""
 
     # 3. 등록번호 추출
     regno_match = re.search(
-        r"(?:【등록번호】|\(11\)\s*등록번호|등록번호\s*[:：])\s*([0-9\-\s]+)",
+        r"(?:【등록번호】|\(11\)\s*등록번호|등록번호)\s*[:：]?\s*([0-9\-\s]+)",
         clean,
     )
     register_number = re.sub(r"\s+", "", regno_match.group(1).strip()) if regno_match else ""
 
     # 4. 출원인 / 특허권자 추출
     applicant_match = re.search(
-        r"(?:【출원인】|\(71\)\s*출원인|\(73\)\s*특허권자|특허권자\s*[:：]|출원인\s*[:：])\s*([^\n\r]+)",
+        r"(?:【출원인】|\(71\)\s*출원인|\(73\)\s*특허권자|특허권자|출원인)\s*[:：]?\s*([^\n\r]+)",
         clean,
     )
-    applicant = applicant_match.group(1).strip() if applicant_match else "농촌진흥청/국가"
+    applicant = applicant_match.group(1).strip().lstrip(":：").strip() if applicant_match else "농촌진흥청/국가"
 
     # 5. IPC 분류 추출
     ipc_match = re.search(
-        r"(?:【국제특허분류\(IPC\)】|\(51\)\s*Int\.\s*Cl\.|IPC\s*[:：])\s*([A-H][0-9]{2}[A-Z]?\s*[0-9\/]*)",
+        r"(?:【국제특허분류\(IPC\)】|\(51\)\s*Int\.\s*Cl\.|IPC)\s*[:：]?\s*([A-H][0-9]{2}[A-Z]?\s*[0-9\/]*)",
         clean,
     )
-    ipc_code = ipc_match.group(1).strip() if ipc_match else "A01G"
+    ipc_code = ipc_match.group(1).strip().lstrip(":：").strip() if ipc_match else "A01G"
 
     # 6. 요약(Abstract) 추출
     abstract_match = re.search(
@@ -75,7 +75,6 @@ def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
 
     # 7. 청구항(Claims) 분해
     claims = []
-    # 【청구항 N】 또는 청구항 N 패턴 분할
     claims_section_match = re.search(
         r"(?:【특허청구범위】|【청구범위】)\s*([\s\S]*?)(?=(?:【도면의\s*간단한\s*설명】|【발명의\s*설명】|【명세서】|\Z))",
         clean,

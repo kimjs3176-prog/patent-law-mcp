@@ -34,7 +34,7 @@ from patent_law_mcp.tools.recommendation import (
     recommend_free_transfer_patents,
 )
 
-# 신규 고도화 도구 모듈 임포트 (1번: KIPRISPlus 실시간 연동, 4번: 패키징 & 수요기업 역매칭)
+# 신규 고도화 도구 모듈 임포트
 from patent_law_mcp.tools.kipris_connector import (
     fetch_patent_from_kipris,
     inspect_and_summarize_by_appno,
@@ -42,6 +42,11 @@ from patent_law_mcp.tools.kipris_connector import (
 from patent_law_mcp.tools.bundling_and_targeting import (
     bundle_patents_for_transfer,
     find_target_licensees_by_patent,
+)
+from patent_law_mcp.tools.document_parser import (
+    parse_raw_patent_text,
+    analyze_patent_document,
+    get_bundled_sample_patent,
 )
 
 # FastMCP 서버 생성
@@ -52,6 +57,22 @@ mcp = FastMCP(
         "(출원·심사 대리가 아닌 기술이전·처분 실무 보조 도구)"
     ),
 )
+
+# 0. Zero-API 공보 텍스트 스마트 파서 및 종합 분석 도구 (API 키 불필요)
+mcp.tool(
+    name="analyze_patent_document",
+    description="복사한 공보 텍스트에서 요약서, 스펙 칩, TRL 진단, 60초 바이어 피치, 수요기업 타겟팅까지 원스톱 실행 (Zero-API)",
+)(analyze_patent_document)
+
+mcp.tool(
+    name="parse_raw_patent_text",
+    description="복사한 공보 텍스트에서 발명의 명칭, 출원/등록번호, 출원인, IPC, 초록, 청구항을 자동 분해 (Zero-API)",
+)(parse_raw_patent_text)
+
+mcp.tool(
+    name="get_bundled_sample_patent",
+    description="내장된 KOAT·농진청 핵심 국유특허 샘플 데이터를 즉시 로드 (완전 오프라인/테스트용)",
+)(get_bundled_sample_patent)
 
 # 1. 기술실시계약 실무 도구 등록
 mcp.tool(
@@ -118,18 +139,7 @@ mcp.tool(
     description="중소기업 및 농업인 대상 무상기술이전(나눔특허, 국유특허 무상실시) 추천",
 )(recommend_free_transfer_patents)
 
-# 6. [신규 고도화 1번] KIPRISPlus 실시간 연동 도구
-mcp.tool(
-    name="fetch_patent_from_kipris",
-    description="13자리 출원번호 입력으로 KIPRIS Plus 실시간 Open API 서지사항, 권리상태, 등록청구항 조회",
-)(fetch_patent_from_kipris)
-
-mcp.tool(
-    name="inspect_and_summarize_by_appno",
-    description="출원번호 하나로 KIPRIS 조회부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
-)(inspect_and_summarize_by_appno)
-
-# 7. [신규 고도화 4번] 특허 패키징(Bundling) 및 수요기업 역매칭(Targeting) 도구
+# 6. 특허 패키징(Bundling) 및 수요기업 역매칭(Targeting) 도구
 mcp.tool(
     name="bundle_patents_for_transfer",
     description="원천·공정·장치 특허를 묶어 회피설계를 방지하고 일괄 감면율을 적용하는 기술이전 패키지 제안서 구성",
@@ -139,6 +149,17 @@ mcp.tool(
     name="find_target_licensees_by_patent",
     description="특허 IPC 및 제품 분야 기반 표준산업분류(KSIC) 매칭, 유력 수요기업군(양산/스타트업) 타겟팅 전략 도출",
 )(find_target_licensees_by_patent)
+
+# 7. KIPRISPlus 연동 도구 (선택적)
+mcp.tool(
+    name="fetch_patent_from_kipris",
+    description="13자리 출원번호 입력으로 KIPRIS Plus 실시간 Open API 서지사항, 권리상태, 등록청구항 조회",
+)(fetch_patent_from_kipris)
+
+mcp.tool(
+    name="inspect_and_summarize_by_appno",
+    description="출원번호 하나로 KIPRIS 조회부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
+)(inspect_and_summarize_by_appno)
 
 
 def main():
