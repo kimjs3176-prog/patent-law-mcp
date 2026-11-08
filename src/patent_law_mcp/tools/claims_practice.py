@@ -1,7 +1,7 @@
 """특허 청구항 권리범위 분석 및 FTO/침해·회피설계 실무 도구
 
 주요 실무 기능:
-- analyze_claim_elements_chart: 독립항의 구성요소 완비의 법칙(All Elements Rule) 기반 분해 및 침해 대비표 생성
+- analyze_claim_elements_chart: 독립항의 구성요소 완비의 법칙(All Elements Rule) 기반 분해 및 3단계 침해 위험 태깅
 - evaluate_workaround_points: 청구범위 회피설계(Workaround) 및 구성요소 치환·생략 가이드
 """
 
@@ -16,7 +16,7 @@ def analyze_claim_elements_chart(
 ) -> Dict[str, Any]:
     """독립항을 핵심 구성요소(Element)별로 분해하고, 목표 제품과의 요소별 대비표(Element-by-Element Chart)를 구성합니다.
 
-    All Elements Rule(구성요소 완비의 법칙)에 따라, 대상 제품이 청구항의 모든 구성요소를 그대로 포함하는지 검토합니다.
+    All Elements Rule(구성요소 완비의 법칙)에 따라 목표 제품의 침해 위험을 3단계로 정밀 태깅합니다.
 
     Args:
         claim_text: 독립항(청구항 1항) 원문 텍스트
@@ -24,28 +24,55 @@ def analyze_claim_elements_chart(
     """
     clean_claim = claim_text.strip()
 
-    # 세미콜론(;), 불릿, 번호 등을 기준으로 구성요소 분해
+    # 세미콜론(;), 불릿, 개행 등을 기준으로 구성요소 분해
     raw_parts = [p.strip() for p in re.split(r"[;\n]+", clean_claim) if len(p.strip()) > 5]
 
     elements = []
+    prod_spec_lower = (target_product_spec or "").lower()
+
     for idx, part in enumerate(raw_parts, start=1):
-        # 주어/목적어 형태의 구성 명칭 발췌
+        element_id = f"구성 {chr(64 + idx)}"  # 구성 A, B, C...
+
+        # 3단계 침해 위험 태깅 로직
+        if not target_product_spec:
+            match_status = "검토 대기 (제품 사양 미입력)"
+            risk_tag = "대기"
+        else:
+            # 주요 단어 추출 후 제품 사양과 비교
+            keywords = [w for w in re.findall(r"[가-힣a-zA-Z0-9]{2,}", part) if len(w) >= 2][:4]
+            matches = [k for k in keywords if k.lower() in prod_spec_lower]
+
+            if len(matches) >= 2:
+                match_status = f"문언 일치 위험 높음 (주요 키워드: {', '.join(matches)})"
+                risk_tag = "문언 침해 주의"
+            elif len(matches) == 1:
+                match_status = f"구성 일부 상이/치환 의심 (유사 키워드: {matches[0]} - 균등론 검토 필요)"
+                risk_tag = "균등 침해 검토"
+            else:
+                match_status = "구성 결여 유력 (대상 제품에서 해당 특징 미발견)"
+                risk_tag = "비침해 유력 (회피 성공)"
+
         elements.append({
-            "element_id": f"구성 {chr(64 + idx)}",  # 구성 A, B, C...
+            "element_id": element_id,
             "claim_statement": part,
-            "target_product_match": "포함 (직접 침해 가능성)" if target_product_spec else "검토 대기",
-            "practical_role": "핵심 기술적 특징 및 유기적 결합 요소",
+            "target_product_match": match_status,
+            "risk_assessment": risk_tag,
         })
+
+    has_non_infringement = any(e["risk_assessment"] == "비침해 유력 (회피 성공)" for e in elements)
+
+    overall_fto_summary = (
+        "결과: 최소 1개 이상의 필수 구성요소가 결여되어 All Elements Rule상 '문언 침해'는 성립하지 않을 가능성이 높습니다. "
+        "다만 상이한 구성이 통상의 기술자에게 자명한 치환인지 '균등론' 성립 여부를 최종 점검하십시오."
+        if has_non_infringement and target_product_spec
+        else "결과: 모든 구성요소가 대상 제품에 대응되거나 유사하게 실시될 경우 침해 성립 가능성이 매우 높으므로 회피설계가 필수적입니다."
+    )
 
     return {
         "claim_decomposition": elements,
-        "all_elements_rule_status": (
-            "침해 성립 요건: 대상 제품이 위 구성요소(A, B, C...) 전부를 완비해야 문언 침해가 성립합니다. "
-            "단 하나의 구성요소라도 누락되면 원칙적으로 문언 침해에서 벗어납니다."
-        ),
-        "doctrine_of_equivalents_note": (
-            "구성요소를 변경하더라도 과제의 해결원리가 동일하고 동일한 효과를 나타내며, "
-            "그 변경이 해당 분야 통상의 지식을 가진 자에게 자명한 경우 '균등 침해'가 문제될 수 있으므로 기능적 차별화가 필수적입니다."
+        "overall_fto_summary": overall_fto_summary,
+        "all_elements_rule_principle": (
+            "구성요소 완비의 법칙: 청구항에 기재된 A, B, C, D 중 어느 하나라도 대상 제품에 포함되지 않으면 문언 침해가 성립하지 않습니다."
         ),
     }
 
@@ -53,11 +80,7 @@ def analyze_claim_elements_chart(
 def evaluate_workaround_points(
     claim_elements: List[Dict[str, str]],
 ) -> Dict[str, Any]:
-    """청구항 구성요소 분해 결과를 바탕으로 특허 침해를 회피하기 위한 실무 전략(생략·치환·역설계)을 제시합니다.
-
-    Args:
-        claim_elements: analyze_claim_elements_chart에서 도출된 구성요소 목록
-    """
+    """청구항 구성요소 분해 결과를 바탕으로 특허 침해를 회피하기 위한 실무 전략(생략·치환·역설계)을 제시합니다."""
     workaround_strategies = [
         {
             "strategy": "구성요소 완전 생략 (Omission)",

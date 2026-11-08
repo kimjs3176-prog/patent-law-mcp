@@ -12,10 +12,7 @@ def process_invention_disclosure(
     project_budget_source: str = "national_rnd",  # "national_rnd"(국가R&D), "institutional"(기관고유사업)
     inventor_main_duty: str = "연구개발 및 기술보급",
 ) -> Dict[str, Any]:
-    """직무발명 신고서 접수 시 직무범위성 판정 및 심의위원회 상정 안건을 작성합니다.
-
-    지식재산처 국유특허 업무편람 제2장 및 발명진흥법 제10조·제12조 기반.
-    """
+    """직무발명 신고서 접수 시 직무범위성 판정 및 심의위원회 상정 안건을 작성합니다."""
     is_national = institution_type == "national_gov"
 
     checklist = [
@@ -49,24 +46,30 @@ def calculate_disposal_compensation(
 ) -> Dict[str, Any]:
     """지식재산처 고시 제11조에 따라 직접비용을 공제한 후 순수입금의 50%에 해당하는 처분보상금을 산출합니다.
 
-    지식재산처고시 제2025-4호 제11조 (처분수입금에서 출원·등록비용 및 기술이전 직접비용 공제 후 50% 지급).
+    소득세법상 직무발명보상금 비과세 한도(연 700만 원) 적용 가이드 포함.
     """
     net_income = max(0, contract_income_krw - direct_expenses_krw)
-    total_compensation_pool = int(net_income * 0.50)  # 순수입의 50%
+    total_compensation_pool = int(round(net_income * 0.50))  # 순수입의 50%
+
+    TAX_FREE_LIMIT_ANNUAL = 7_000_000  # 소득세법 제12조 제5호 라목 (연간 비과세 한도 700만 원)
 
     payout_table = []
     for inv in inventor_shares:
         name = inv.get("name", "발명자")
         rate = float(inv.get("share_rate", 1.0))
-        payout = int(total_compensation_pool * rate)
-        tax_estimate = int(payout * 0.22)  # 기타소득세 22% 원천징수 추정
+        payout = int(round(total_compensation_pool * rate))
+
+        # 세무 처리 가이드 (비과세 700만원 초과분에 대해 기타소득세 22% 원천징수)
+        taxable_amount = max(0, payout - TAX_FREE_LIMIT_ANNUAL)
+        tax_estimate = int(round(taxable_amount * 0.22))
         net_payout = payout - tax_estimate
 
         payout_table.append({
             "inventor_name": name,
             "share_rate": f"{rate * 100:.1f}%",
             "gross_compensation": f"{payout:,}원",
-            "estimated_withholding_tax": f"{tax_estimate:,}원",
+            "tax_free_portion": f"{min(payout, TAX_FREE_LIMIT_ANNUAL):,}원 (비과세 한도 적용)",
+            "estimated_withholding_tax": f"{tax_estimate:,}원 (초과분 기타소득세 22%)",
             "net_payout": f"{net_payout:,}원",
         })
 
@@ -77,6 +80,7 @@ def calculate_disposal_compensation(
         "net_disposal_income": f"{net_income:,}원",
         "total_compensation_amount": f"{total_compensation_pool:,}원 (순처분수입의 50%)",
         "payment_table": payout_table,
+        "tax_note": "소득세법 제12조에 따른 직무발명보상금 비과세 한도(연간 700만 원)를 반영한 실무 세액 추정치입니다.",
         "administrative_checklist": [
             "지식재산특별회계 국고 세입 조치 영수증 첨부",
             "발명자 전원 기여율 합의서 대조 확인",
@@ -89,19 +93,28 @@ def evaluate_unutilized_free_license(
     registration_years_elapsed: int,
     applicant_scale: str = "sme",  # "sme", "farmer", "large"
     has_prior_license: bool = False,
+    has_joint_patentee: bool = False,  # 민간 공동출원인 존재 여부
 ) -> Dict[str, Any]:
     """등록 후 3년 미활용 국유특허의 3년 무상 통상실시 및 중소기업 재계약 우대 요율을 심의합니다.
 
-    지식재산처고시 제2025-4호 제3조, 제6조, 제7조 기반.
+    지식재산처고시 제2025-4호 제3조, 제4조, 제6조, 제7조 기반.
     """
     is_unutilized_3yr = registration_years_elapsed >= 3 and not has_prior_license
 
     if is_unutilized_3yr:
+        joint_owner_guidance = (
+            "⚠️ 공동권리자 주의: 본 특허에 민간 기업 등 공동권리자가 존재할 경우, 고시 제4조 제4항에 따라 "
+            "반드시 '공동권리자의 통상실시 서면 동의서'를 첨부해야 하며, 민간 지분에 대한 기술료는 별도 협의해야 합니다."
+            if has_joint_patentee
+            else "단독 소유: 국가 단독 소유 특허로서 지식재산처 단독 처분 가능"
+        )
+
         return {
             "eligible_for_free_license": True,
             "regulatory_basis": "지식재산처고시 제2025-4호 제3조 제2항 (미활용 국유특허 활용 촉진)",
             "license_type": "무상 통상실시권",
             "max_free_period": "최대 3년 (제3조 제3항)",
+            "joint_patentee_check": joint_owner_guidance,
             "subsequent_terms": {
                 "renewal_policy": "최초 3년 무상실시 종료 후 연장 시 유상 전환 필수 (제6조 제1항)",
                 "sme_preferential_rate": (
@@ -113,7 +126,7 @@ def evaluate_unutilized_free_license(
             "required_documents": [
                 "별지 제1호 서식 국유특허 무상실시 신청서",
                 "사업화 추진일정 및 자금 조달 계획을 포함한 사업계획서",
-                "무상실시 사유서 (공동권리자 존재 시 통상실시 동의서 첨부)",
+                "무상실시 사유서 (공동권리자 존재 시 통상실시 동의서 필수)",
             ],
             "competitor_limit_note": "신청자 다수 시 과당경쟁 방지를 위해 사업계획서 실현가능성 및 신청순서에 따라 실시자 수 제한 가능 (제5조)",
         }
@@ -133,13 +146,10 @@ def evaluate_exclusive_renewal(
     ongoing_clinical_or_regulatory_tests: bool = False,
     expiry_days_remaining: int = 45,
 ) -> Dict[str, Any]:
-    """지식재산처 고시 제10조에 따라 국유특허 전용실시계약의 갱신 적합성을 심의합니다.
-
-    지식재산처고시 제2025-4호 제10조 (전용실시계약의 갱신 사유 5가지 및 만료 30일 전 신청 요건).
-    """
+    """지식재산처 고시 제10조에 따라 국유특허 전용실시계약의 갱신 적합성을 심의합니다."""
     reasons_met = []
 
-    # 1호: 사업화 수익 < 투자 비용 (투자금 미회수)
+    # 1호: 사업화 수익 < 투자 비용
     if cumulative_commercial_revenue_krw < cumulative_investment_krw:
         reasons_met.append(
             f"사업화 수익({cumulative_commercial_revenue_krw:,}원)이 투자 비용({cumulative_investment_krw:,}원)보다 적음 (제10조 제1항 제1호)"
@@ -149,9 +159,7 @@ def evaluate_exclusive_renewal(
     if ongoing_clinical_or_regulatory_tests:
         reasons_met.append("사업화를 위한 후속연구 또는 법령에 따른 인허가·등록 시험 진행 중 (제10조 제1항 제2호)")
 
-    # 신청 기한 검토 (만료 30일 전까지)
     is_on_time = expiry_days_remaining >= 30
-
     can_renew = bool(reasons_met) and is_on_time
 
     return {
