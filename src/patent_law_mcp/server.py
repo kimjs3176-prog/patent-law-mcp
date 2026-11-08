@@ -217,8 +217,23 @@ register(
 )
 
 
-def main():
-    mcp.run()
+def main(argv=None):
+    import argparse
+    import os
+
+    ap = argparse.ArgumentParser(prog="patent-law-mcp", description="특허 실무 MCP 서버")
+    ap.add_argument("--transport", choices=["stdio", "streamable-http"], default=os.environ.get("PATENT_LAW_MCP_TRANSPORT", "stdio"))
+    ap.add_argument("--host", default=os.environ.get("PATENT_LAW_MCP_HOST", "127.0.0.1"))
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PATENT_LAW_MCP_PORT", "8000")))
+    ap.add_argument("--allowed-host", action="append", default=[], help="외부 접속 Host 헤더 허용 (예: mcp.example.org)")
+    args = ap.parse_args(argv)
+
+    if args.transport == "stdio":
+        mcp.run()
+        return
+    from patent_law_mcp.http_app import serve_http
+
+    serve_http(mcp, args.host, args.port, args.allowed_host)
 
 
 if __name__ == "__main__":

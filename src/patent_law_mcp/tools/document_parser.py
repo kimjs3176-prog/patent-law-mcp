@@ -120,7 +120,7 @@ def parse_raw_patent_text(raw_text: Annotated[str, Field(min_length=20)]) -> Dic
         r"(?:【국제특허분류[^】]*】|\(51\)|국제특허분류|Int\.\s*Cl|IPC)[\s\S]{0,200}?([A-H]\d{2}[A-Z])\s*(\d{1,4}\s*/\s*\d{2,6})",
         text,
     )
-    ipc_code = f"{ipc_match.group(1)} {re.sub(r'\s', '', ipc_match.group(2))}" if ipc_match else ""
+    ipc_code = (ipc_match.group(1) + " " + re.sub(r"\s", "", ipc_match.group(2))) if ipc_match else ""
 
     abstract_match = re.search(rf"(?:{_ABSTRACT_START})\s*([\s\S]*?)(?=(?:{_ABSTRACT_END})|\Z)", text, re.M)
     abstract = normalize_ws(abstract_match.group(1)) if abstract_match else ""

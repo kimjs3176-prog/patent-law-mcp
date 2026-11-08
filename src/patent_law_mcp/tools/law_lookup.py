@@ -13,7 +13,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 import httpx
 from pydantic import Field
 
-from patent_law_mcp import net
+from patent_law_mcp import cache, net
 from patent_law_mcp.config import settings
 
 LAW_API = "https://www.law.go.kr/DRF"
@@ -138,6 +138,10 @@ def get_law_article(
     if not _oc():
         return _need_oc()
     jo = article_code(article)
+    compact_name = re.sub(r"\s+", "", law_name)
+    cache_key = f"{compact_name}:{jo}"
+    if hit := cache.get("law", cache_key, ttl_hours=24):
+        return hit
     try:
         candidates = _search(law_name, "law", 20)
         if not candidates:
@@ -157,7 +161,7 @@ def get_law_article(
     if not unit:
         return {"found": False, "error": f"{law['name']}에서 {label}를 찾지 못했습니다.", "law": law}
 
-    return {
+    result = {
         "found": True,
         "source": "국가법령정보 공동활용 Open API",
         "law_name": info.get("법령명_한글") or law["name"],
@@ -169,3 +173,5 @@ def get_law_article(
         "link": law["link"],
         "other_matches": [c["name"] for c in candidates if c is not law][:5],
     }
+    cache.put("law", cache_key, result)
+    return result

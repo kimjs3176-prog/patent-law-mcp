@@ -20,7 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 from pydantic import Field
 
-from patent_law_mcp import net
+from patent_law_mcp import cache, net
 from patent_law_mcp.config import settings
 from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.claim_utils import normalize_ws
@@ -278,6 +278,7 @@ def fetch_from_kipris_api(application_digits: str, service_key: str) -> Tuple[Op
 def fetch_patent_smart(
     patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
     number_type: NumberType = "auto",
+    refresh: bool = False,
 ) -> Dict[str, Any]:
     """출원·등록·공개번호로 특허 서지·초록·청구항을 조회하고, 받은 문서가 요청한 번호와 일치하는지 검증합니다.
 
@@ -285,12 +286,16 @@ def fetch_patent_smart(
         patent_identifier: 특허번호 (예: "10-1070281", "10-2010-0062402", "KR101070281B1")
         number_type: 번호 종류 ("auto", "application"(출원), "registration"(등록), "publication"(공개)).
             auto는 7·9자리를 등록번호, 13자리를 출원번호로 봅니다. 13자리 공개번호는 "publication"으로 지정하십시오.
+        refresh: True면 캐시를 무시하고 다시 조회
 
     출원번호 조회에는 KIPRIS Plus 인증키(환경변수 KIPRIS_API_KEY)가 필요합니다.
     확인하지 못하면 found=False와 시도 내역을 반환하며, 다른 특허를 대신 돌려주지 않습니다.
     """
     num = parse_kr_patent_number(patent_identifier, number_type)
     key = settings.kipris_api_key
+    cache_key = f"{num.kind}:{num.digits}:{'kipris' if key else 'web'}"
+    if not refresh and (hit := cache.get("patent", cache_key)):
+        return hit
     attempts: List[Dict[str, str]] = []
     data: Optional[Dict[str, Any]] = None
 
@@ -329,7 +334,7 @@ def fetch_patent_smart(
 
     data.pop("_check", None)
     applicants = data.get("applicants") or []
-    return {
+    result = {
         "found": True,
         "requested": requested,
         **data,
@@ -337,6 +342,8 @@ def fetch_patent_smart(
         "ipc_code": (data.get("ipc_codes") or [""])[0],
         "attempts": attempts,
     }
+    cache.put("patent", cache_key, result)
+    return result
 
 
 def inspect_and_summarize_by_appno(
