@@ -54,11 +54,16 @@ NATIONAL_SCHEMA: Dict[str, Dict[str, tuple]] = {
     "unutilized_free_license": {
         "unutilized_years_threshold": (int,),
         "max_free_license_years": (int,),
-        "sme_renewal_base_rate_reduction_pp": _NUM,
+        "sme_renewal_base_rate": _NUM,
         "joint_patentee_written_consent_required": (bool,),
     },
-    "exclusive_licensing": {"minimum_royalty_amount": (int,), "payment_deadline_days": (int,), "competitive_bidding_required": (bool,)},
-    "exclusive_renewal": {"application_deadline_days_before_expiry": (int,)},
+    "exclusive_licensing": {
+        "minimum_royalty_amount": (int,),
+        "payment_deadline_days": (int,),
+        "competitive_bidding_required": (bool,),
+        "private_contract_exceptions": (list,),
+    },
+    "exclusive_renewal": {"application_deadline_days_before_expiry": (int,), "grounds": (dict,)},
     "registration_compensation": {"patent": (int,), "utility_model": (int,), "design": (int,)},
 }
 

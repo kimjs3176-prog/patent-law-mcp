@@ -36,7 +36,7 @@ def test_holiday_shift_includes_saturday_lunar_and_labor_day():
     r = adjust_for_holidays(date(2025, 1, 25))  # 토 → 일 → 1/27 임시공휴일 → 설 연휴 1/28~30
     assert r["date"] == date(2025, 1, 31)
     assert [s["reason"] for s in r["skipped"]][:2] == ["토요일", "일요일"]
-    assert adjust_for_holidays(date(2025, 5, 1))["date"] == date(2025, 5, 2)  # 근로자의 날
+    assert adjust_for_holidays(date(2025, 5, 1))["date"] == date(2025, 5, 2)  # 노동절(특허법 제14조 제4호)
 
 
 def test_priority_preset():
@@ -72,7 +72,9 @@ def test_annuity_schedule_and_status():
     }
     assert r["status"].startswith("정상")
     assert calculate_annuity_schedule(reg, app, 3, as_of=date(2014, 12, 1))["status"].startswith("추가납부기간")
-    assert calculate_annuity_schedule(reg, app, 3, as_of=date(2015, 5, 1))["status"].startswith("추가납부기간 경과")
+    restoring = calculate_annuity_schedule(reg, app, 3, as_of=date(2015, 5, 1))
+    assert restoring["status"].startswith("추가납부기간 경과") and "특허료의 2배" in restoring["status"]
+    assert "원문 확인" not in restoring["status"]
     assert calculate_annuity_schedule(reg, app, 3, as_of=date(2016, 1, 1))["status"].startswith("연차료 미납")
 
 

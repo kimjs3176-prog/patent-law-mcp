@@ -3,7 +3,8 @@
 기간 계산은 특허법 제14조를 따릅니다.
 1. 첫날은 넣지 않는다 (기산일 = 기준일 다음 날)
 2. 월·연 단위는 역(曆)으로 계산: 기산일이 월 초가 아니면 마지막 달의 기산일 해당일 전날, 해당일이 없으면 그 달 말일
-3. 마지막 날이 공휴일(토요일·일요일·근로자의 날 포함)이면 다음 날로 만료 — 절차 기한에만 적용 (존속기간 만료일에는 적용 안 함)
+3. 마지막 날이 공휴일(토요일·일요일·노동절 포함)이면 다음 날로 만료 — 절차 기한에만 적용 (존속기간 만료일에는 적용 안 함)
+   (특허법 제14조 제4호는 2025.11.11. 개정으로 '근로자의 날'을 '노동절'로 바꿈)
 """
 
 import calendar
@@ -52,7 +53,7 @@ def period_end(base: date, months: int = 0, days: int = 0) -> date:
 @lru_cache(maxsize=64)
 def _kr_holidays(year: int) -> Dict[date, str]:
     days = dict(holidays.country_holidays("KR", years=year, language="ko"))
-    days.setdefault(date(year, 5, 1), "근로자의 날")
+    days.setdefault(date(year, 5, 1), "노동절 (5월 1일)")
     return days
 
 
@@ -81,7 +82,7 @@ def calculate_patent_deadline(
     days: Annotated[Optional[int], Field(ge=1, le=3650)] = None,
     extra_holidays: Optional[List[date]] = None,
 ) -> Dict[str, Any]:
-    """특허 절차 기한을 특허법 제14조 방식(첫날 불산입, 역 계산, 공휴일이면 다음 날)으로 계산합니다.
+    """특허 절차 기한을 특허법 제14조 방식(첫날 불산입, 역 계산, 공휴일·토요일·노동절이면 다음 날)으로 계산합니다.
 
     Args:
         base_date: 기준일 (출원일·우선일·공개일·통지서 송달일 등, YYYY-MM-DD)
@@ -111,7 +112,7 @@ def calculate_patent_deadline(
         "nominal_end": nominal.isoformat(),
         "deadline": adjusted["date"].isoformat(),
         "shifted_for_holidays": adjusted["skipped"],
-        "method": rules["metadata"]["basis"] + " — 첫날 불산입, 마지막 날이 공휴일(토요일·근로자의 날 포함)이면 다음 날",
+        "method": rules["metadata"]["basis"] + " — 첫날 불산입(기간이 오전 0시부터 시작하면 산입), 마지막 날이 공휴일(토요일·노동절 포함)이면 다음 날",
         "unverified_items": [n for n in rules["verification_notes"] if "심사청구" in n] if preset == "examination_request" else [],
     }
 
@@ -210,7 +211,10 @@ def calculate_annuity_schedule(
         elif today <= date.fromisoformat(nxt["late_payment_until"]):
             status = f"추가납부기간 — {nxt['year']}년차분을 {nxt['late_payment_until']}까지 가산금과 함께 납부해야 함 ({a['late_article']})"
         elif today <= date.fromisoformat(nxt["restoration_until"]):
-            status = f"추가납부기간 경과 — {nxt['restoration_until']}까지 회복 신청 가능 여부 확인 ({a['restoration_article']}, 원문 확인 필요)"
+            status = (
+                f"추가납부기간 경과 — {nxt['restoration_until']}까지 특허료의 2배를 내고 회복 신청 가능 "
+                f"({a['restoration_article']} 제3항)"
+            )
         else:
             status = "연차료 미납으로 소멸했을 가능성이 큼 — 등록원부로 확인하십시오"
 
@@ -221,7 +225,11 @@ def calculate_annuity_schedule(
         "status_as_of": today.isoformat(),
         "status": status,
         "schedule": schedule,
-        "basis": f"{a['due_article']} (4년차부터 매년 설정등록일 해당일 기준 납부), {a['late_article']} (6개월 추가납부)",
+        "basis": f"{a['due_article']} (4년차부터 매년 설정등록일 해당일 기준 납부), {a['late_article']} (6개월 추가납부, 특허료의 2배 범위 가산)",
+        "restoration_rules": [
+            f"추가납부기간 만료일부터 {a['restoration_months']}개월 이내 특허료의 2배를 내고 회복 신청 ({a['restoration_article']} 제3항)",
+            f"정당한 사유로 못 낸 경우 그 사유가 소멸한 날부터 2개월 이내 납부 가능, 추가납부기간 만료일부터 1년 한도 ({a['restoration_article']} 제1항)",
+        ],
         "unverified_items": [n for n in _rules()["verification_notes"] if "연차료" in n],
         "note": "납부 금액은 계산하지 않습니다 (특허료 등의 징수규칙 확인). 실제 납부 이력은 등록원부로 확인하십시오.",
     }
