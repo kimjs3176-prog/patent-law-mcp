@@ -1,17 +1,17 @@
-"""특허 공보 및 원문 비정형 텍스트 스마트 파서 (Zero-API / 완전 자립형)
+"""특허 공보·명세서 텍스트 파서 (로컬, 외부 API 불필요)
 
-외부 API나 인증키 없이도, 사용자가 복사·붙여넣기한 공보 텍스트나 PDF 추출 텍스트에서
-서지정보, 청구항, 초록, IPC를 자체 정규식 파서로 100% 자동 분해하여 정형 데이터로 변환합니다.
+사용자가 붙여넣은 공보 텍스트(KIPRIS·공보 PDF 복사본) 또는 전자출원 명세서(【청구항 1】 형식)에서
+서지사항·초록·청구항을 분해합니다. 찾지 못한 항목은 지어내지 않고 빈 값과 경고로 알려 줍니다.
 """
 
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
 
-from patent_law_mcp.tools.analysis import summarize_patent, evaluate_commercialization
+from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.bundling_and_targeting import find_target_licensees_by_patent
+from patent_law_mcp.tools.claim_utils import is_deleted_claim, is_dependent_claim, normalize_ws
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 BUNDLED_FILE = DATA_DIR / "bundled_patents.json"
@@ -32,150 +32,203 @@ KEY_ALIASES = {
 }
 
 
-def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
-    """공보 텍스트나 웹 화면 복사본에서 표준 특허 식별자 기호(KIPO/WIPO 표준)를 감지하여 자동 파싱합니다."""
-    clean = raw_text.strip()
+def _spaced(word: str) -> str:
+    """'요약' -> '요\\s*약' : 공보 PDF 복사본의 자간 공백('요 약', '명 세 서')을 허용합니다."""
+    return r"\s*".join(re.escape(ch) for ch in word)
 
-    title_match = re.search(
-        r"(?:【발명의\s*명칭】|\(54\)\s*발명의\s*명칭|발명의\s*명칭)\s*[:：]?\s*([^\n\r]+)",
-        clean,
-    )
-    title = title_match.group(1).strip().lstrip(":：").strip() if title_match else ""
 
-    appno_match = re.search(
-        r"(?:【출원번호】|\(21\)\s*출원번호|출원번호)\s*[:：]?\s*([0-9\-\s]+)",
-        clean,
-    )
-    application_number = re.sub(r"\s+", "", appno_match.group(1).strip()) if appno_match else ""
+_PAT_NO = r"\d{2}\s*-\s*\d{4}\s*-\s*\d{7}|\d{13}"
+_REG_NO = r"\d{2}\s*-\s*\d{7}|\d{9}"
 
-    regno_match = re.search(
-        r"(?:【등록번호】|\(11\)\s*등록번호|등록번호)\s*[:：]?\s*([0-9\-\s]+)",
-        clean,
-    )
-    register_number = re.sub(r"\s+", "", regno_match.group(1).strip()) if regno_match else ""
+_ABSTRACT_START = rf"【요약】|\[요약\]|\(57\)\s*{_spaced('요약')}|^[ \t]*{_spaced('요약')}[ \t]*$"
+_ABSTRACT_END = (
+    rf"【대표도】|{_spaced('대표도')}|【청구|【특허청구범위】|{_spaced('특허청구의범위')}|{_spaced('특허청구범위')}"
+    rf"|^[ \t]*{_spaced('청구범위')}[ \t]*$|【명세서】|^[ \t]*{_spaced('명세서')}[ \t]*$|【도면|【발명의\s*설명】"
+)
+_CLAIMS_START = (
+    rf"【특허청구범위】|【청구범위】|{_spaced('특허청구의범위')}|{_spaced('특허청구범위')}"
+    rf"|^[ \t]*{_spaced('청구범위')}[ \t]*$"
+)
+_CLAIMS_END = (
+    rf"【발명의\s*설명】|【명세서】|^[ \t]*{_spaced('명세서')}[ \t]*$|【도면의\s*간단한\s*설명】|【요약서】|【요약】"
+    rf"|【도면】|^[ \t]*{_spaced('기술분야')}[ \t]*$|^[ \t]*{_spaced('발명의설명')}[ \t]*$"
+)
+_CLAIM_HEADER = re.compile(r"【\s*청구항\s*(\d+)\s*】|^[ \t]*청\s*구\s*항[ \t]*(\d+)[ \t]*(?:[.:：][ \t]*|$)", re.M)
 
-    applicant_match = re.search(
-        r"(?:【출원인】|\(71\)\s*출원인|\(73\)\s*특허권자|특허권자|출원인)\s*[:：]?\s*([^\n\r]+)",
-        clean,
-    )
-    applicant = applicant_match.group(1).strip().lstrip(":：").strip() if applicant_match else "농촌진흥청/국가"
 
-    ipc_match = re.search(
-        r"(?:【국제특허분류\(IPC\)】|\(51\)\s*Int\.\s*Cl\.|IPC)\s*[:：]?\s*([A-H][0-9]{2}[A-Z]?\s*[0-9\/]*)",
-        clean,
-    )
-    ipc_code = ipc_match.group(1).strip().lstrip(":：").strip() if ipc_match else "A01G"
+def _first(pattern: str, text: str, flags: int = 0) -> str:
+    m = re.search(pattern, text, flags)
+    return normalize_ws(m.group(1)) if m else ""
 
-    abstract_match = re.search(
-        r"(?:【요약】|\[요약\]|\(57\)\s*요약)\s*([\s\S]*?)(?=(?:【청구항|【특허청구범위】|【명세서】|【도면|【대표도】|\Z))",
-        clean,
-    )
-    abstract = abstract_match.group(1).strip() if abstract_match else ""
+
+def _format_app_no(raw: str) -> str:
+    d = re.sub(r"\D", "", raw)
+    return f"{d[:2]}-{d[2:6]}-{d[6:]}" if len(d) == 13 else raw
+
+
+def _format_reg_no(raw: str) -> str:
+    d = re.sub(r"\D", "", raw)
+    return f"{d[:2]}-{d[2:]}" if len(d) == 9 else raw
+
+
+def _extract_claims(text: str) -> List[Dict[str, Any]]:
+    start = re.search(_CLAIMS_START, text, re.M)
+    region = text[start.end():] if start else text
+    headers = list(_CLAIM_HEADER.finditer(region))
+    if not headers:
+        return []
+
+    end = re.search(_CLAIMS_END, region[headers[-1].end():], re.M)
+    region_end = headers[-1].end() + end.start() if end else len(region)
 
     claims = []
-    claims_section_match = re.search(
-        r"(?:【특허청구범위】|【청구범위】)\s*([\s\S]*?)(?=(?:【도면의\s*간단한\s*설명】|【발명의\s*설명】|【명세서】|\Z))",
-        clean,
+    for i, h in enumerate(headers):
+        body_end = headers[i + 1].start() if i + 1 < len(headers) else region_end
+        body = normalize_ws(region[h.end():body_end])
+        if body:
+            claims.append({"number": int(h.group(1) or h.group(2)), "text": body})
+    return claims
+
+
+def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
+    """공보 텍스트나 명세서에서 발명의 명칭·출원/등록/공개번호·출원인(특허권자)·IPC·초록·청구항을 분해합니다.
+
+    지원 형식: 등록/공개특허공보 복사본("(54) 발명의 명칭", "(57) 요 약", "청구항 1"),
+    전자출원 명세서("【발명의 명칭】", "【청구항 1】"). 찾지 못한 항목은 빈 값으로 두고 warnings에 기록합니다.
+    """
+    text = raw_text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    warnings: List[str] = []
+
+    title = _first(r"(?:【발명의\s*명칭】|\(54\)\s*발명의\s*명칭|발명의\s*명칭)\s*[:：]?\s*([^\n]+)", text)
+    application_number = _first(rf"(?:【출원번호】|\(21\)\s*출원번호|출원번호)\s*[:：]?\s*({_PAT_NO})", text)
+    register_number = _first(rf"(?:【등록번호】|\(11\)\s*등록번호|등록번호)\s*[:：]?\s*({_REG_NO})(?!\d)", text)
+    publication_number = _first(rf"(?:\(11\)\s*공개번호|공개번호)\s*[:：]?\s*({_PAT_NO})", text)
+
+    applicant = _first(r"【(?:출원인|특허권자)】[\s\S]{0,40}?【명칭】\s*([^\n]+)", text) or _first(
+        r"(?:\(73\)\s*특허권자|\(71\)\s*출원인|【특허권자】|【출원인】|특허권자|출원인)\s*[:：]?\s*([^\n]+)", text
     )
-    claims_text = claims_section_match.group(1) if claims_section_match else clean
 
-    claim_splits = re.split(r"(?:【청구항\s*\d+】|청구항\s*\d+\s*[\.\:：])", claims_text)
-    for c in claim_splits:
-        c_clean = c.strip()
-        if len(c_clean) > 15:
-            claims.append(c_clean)
+    ipc_match = re.search(
+        r"(?:【국제특허분류[^】]*】|\(51\)|국제특허분류|Int\.\s*Cl|IPC)[\s\S]{0,200}?([A-H]\d{2}[A-Z])\s*(\d{1,4}\s*/\s*\d{2,6})",
+        text,
+    )
+    ipc_code = f"{ipc_match.group(1)} {re.sub(r'\s', '', ipc_match.group(2))}" if ipc_match else ""
 
-    if not title:
-        first_line = clean.split("\n")[0].strip()
-        title = first_line[:60] if first_line else "특허 기술 분석 대상"
+    abstract_match = re.search(rf"(?:{_ABSTRACT_START})\s*([\s\S]*?)(?=(?:{_ABSTRACT_END})|\Z)", text, re.M)
+    abstract = normalize_ws(abstract_match.group(1)) if abstract_match else ""
 
-    if not abstract:
-        abstract = title if not claims else claims[0][:150]
+    claim_items = _extract_claims(text)
+    claims = [c["text"] for c in claim_items]
 
+    for value, label in [
+        (title, "발명의 명칭"),
+        (applicant, "출원인/특허권자"),
+        (ipc_code, "IPC"),
+        (abstract, "초록"),
+    ]:
+        if not value:
+            warnings.append(f"{label}을(를) 찾지 못했습니다.")
+    if not (application_number or register_number or publication_number):
+        warnings.append("출원·등록·공개번호를 찾지 못했습니다.")
     if not claims:
-        claims = [abstract or "본 발명의 핵심 구성 청구항"]
+        warnings.append("청구항을 찾지 못했습니다. '청구항 1' 또는 '【청구항 1】' 머리말이 포함되어 있는지 확인하십시오.")
 
     return {
         "title": title,
-        "application_number": application_number or "미기재",
-        "register_number": register_number or "미기재",
+        "application_number": _format_app_no(application_number) if application_number else "",
+        "register_number": _format_reg_no(register_number) if register_number else "",
+        "publication_number": _format_app_no(publication_number) if publication_number else "",
         "applicant": applicant,
         "ipc_code": ipc_code,
         "abstract": abstract,
         "claims_count": len(claims),
+        "claim_numbers": [c["number"] for c in claim_items],
+        "independent_claim_numbers": [
+            c["number"] for c in claim_items if not is_deleted_claim(c["text"]) and not is_dependent_claim(c["text"])
+        ],
         "claims": claims,
-        "parser_mode": "Zero-API 정규식 스마트 파서 (로컬)",
+        "warnings": warnings,
+        "parser_mode": "로컬 정규식 파서",
     }
 
 
-def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, Any]:
-    """내장된 KOAT·농진청 핵심 국유특허 샘플 데이터를 즉시 로드합니다. (완전 오프라인)
-
-    사용 가능한 sample_key 또는 키워드:
-    - 'non_hardening_rice_cake' (또는 '굳지않는떡', '떡'): 농진청 대표 굳지 않는 떡 제조기술 (식품 특허)
-    - 'sorting_machine' (또는 '선별기'): 과채류 비파괴 당도 선별 장치 (장치 특허)
-    - 'black_rice_extract' (또는 '흑미'): 흑미 유래 안토시아닌 C3G 추출방법 (공정·소재 특허)
-    - 'smart_greenhouse' (또는 '온실', '스마트팜'): 밀폐형 온실 복합 환경제어 시스템 (복합 시스템 특허)
-    """
-    if not BUNDLED_FILE.exists():
-        return {"error": "내장 특허 데이터셋 파일을 찾을 수 없습니다."}
-
+def _load_samples() -> Dict[str, Any]:
     with open(BUNDLED_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
+    return {k: v for k, v in data.items() if not k.startswith("_")}, data.get("_notice", "")
 
-    clean_key = sample_key.strip().lower()
-    canonical_key = KEY_ALIASES.get(clean_key, sample_key)
 
-    return data.get(canonical_key, data.get("non_hardening_rice_cake" if "떡" in clean_key else "sorting_machine", {}))
+def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, Any]:
+    """도구 시연·테스트용 가상 샘플 특허를 불러옵니다. (실존 특허가 아닙니다)
+
+    사용 가능한 sample_key (별칭):
+    - 'non_hardening_rice_cake' ('떡', '굳지않는떡'): 식품 제조방법 예시
+    - 'sorting_machine' ('선별기', '과채류'): 장치·방법 예시
+    - 'black_rice_extract' ('흑미'): 추출 공정 예시
+    - 'smart_greenhouse' ('온실', '스마트팜'): 복합 시스템 예시
+    """
+    if not BUNDLED_FILE.exists():
+        return {"found": False, "error": "내장 샘플 데이터 파일을 찾을 수 없습니다."}
+
+    samples, notice = _load_samples()
+    clean_key = re.sub(r"\s+", "", sample_key.strip().lower())
+    canonical_key = KEY_ALIASES.get(clean_key, clean_key)
+
+    if canonical_key not in samples:
+        return {
+            "found": False,
+            "error": f"'{sample_key}'에 해당하는 샘플이 없습니다. 실제 특허 조회는 fetch_patent_smart를 사용하십시오.",
+            "available_samples": sorted(samples),
+        }
+
+    return {"found": True, "sample_key": canonical_key, **samples[canonical_key], "notice": notice}
 
 
 def analyze_patent_document(
     raw_document_text: str,
     target_industry: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """복사·붙여넣기한 특허 공보 텍스트를 파싱하여 요약, TRL 진단, 60초 피치, 수요기업 타겟팅까지 원스톱 실행합니다.
+    """붙여넣은 공보 텍스트를 파싱한 뒤 요약 초안과 수요기업 탐색 참고자료를 함께 만듭니다. (외부 API 불필요)
 
-    외부 API 키(KIPRIS 등)가 전혀 필요 없는 완전 자립형 종합 분석 도구입니다.
+    Args:
+        raw_document_text: 공보 또는 명세서 텍스트
+        target_industry: 목표 산업·제품 (수요기업 탐색에 반영, 선택)
     """
     parsed = parse_raw_patent_text(raw_document_text)
+    metadata = {
+        "title": parsed["title"],
+        "application_number": parsed["application_number"],
+        "register_number": parsed["register_number"],
+        "publication_number": parsed["publication_number"],
+        "applicant": parsed["applicant"],
+        "ipc_code": parsed["ipc_code"],
+        "parser_type": parsed["parser_mode"],
+    }
 
-    title = parsed["title"]
-    abstract = parsed["abstract"]
-    claims = parsed["claims"]
-    applicant = parsed["applicant"]
-    ipc = parsed["ipc_code"]
-    p_id = parsed["register_number"] if parsed["register_number"] != "미기재" else parsed["application_number"]
+    if not parsed["claims"]:
+        return {
+            "metadata": metadata,
+            "error": "청구항을 찾지 못해 분석을 중단했습니다.",
+            "warnings": parsed["warnings"],
+        }
 
+    p_id = parsed["register_number"] or parsed["application_number"] or parsed["publication_number"] or "번호 미기재"
     summary = summarize_patent(
         patent_id=p_id,
-        title=title,
-        abstract=abstract,
-        claims=claims,
-        applicant=applicant,
-    )
-
-    trl = evaluate_commercialization(
-        technology_domain=summary["technology_type"],
-        claims_count=len(claims),
-        has_experimental_data=True,
-    )
-
-    targeting = find_target_licensees_by_patent(
-        technology_title=title,
-        ipc_code=ipc,
-        target_product=f"{title} 상용화 제품",
+        title=parsed["title"],
+        abstract=parsed["abstract"],
+        claims=parsed["claims"],
+        applicant=parsed["applicant"] or None,
     )
 
     return {
-        "metadata": {
-            "title": title,
-            "application_number": parsed["application_number"],
-            "register_number": parsed["register_number"],
-            "applicant": applicant,
-            "ipc_code": ipc,
-            "parser_type": "Zero-API 내장 파서 (로컬 100%)",
-        },
+        "metadata": metadata,
+        "warnings": parsed["warnings"],
         "patent_summary": summary,
-        "commercialization_readiness": trl,
-        "target_licensees_recommendation": targeting,
+        "commercialization_readiness": evaluate_commercialization(summary["technology_type"]),
+        "target_licensees_recommendation": find_target_licensees_by_patent(
+            technology_title=parsed["title"] or summary["claimed_subject_matter"],
+            ipc_code=parsed["ipc_code"] or None,
+            target_product=target_industry,
+        ),
     }

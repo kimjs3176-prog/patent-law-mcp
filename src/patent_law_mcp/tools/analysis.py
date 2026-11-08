@@ -1,16 +1,24 @@
 """특허 분석 및 요약 실무 도구
 
-patent-summary-wizard(atipsum 요약서) 및 patent-video-skill(특허 기술소개영상 시그니처 분석)의
-실무 로직을 결합한 특허 원문 분석 및 고도화 요약 파이프라인.
+원칙: 원문(명칭·초록·청구항·명세서)에 있는 문장만 발췌·재배열합니다.
+원문에서 찾지 못한 항목은 지어내지 않고 '미확인'으로 표시합니다.
 """
 
 import re
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Optional
+
+from patent_law_mcp.tools.claim_utils import (
+    detect_technology_kind,
+    is_deleted_claim,
+    is_dependent_claim,
+    normalize_ws,
+    split_claim_elements,
+    TECH_TYPE_LABELS,
+)
 
 
 class GroundingCorrector:
-    """원문에 없는 AI 환각 '효과 수치'를 걷어내는 결정론적 보정기 (summaryGrounding.ts 및 CONTENT_SPEC.md 포팅)"""
+    """원문에 없는 '효과 수치'를 정성적 표현으로 바꾸는 결정론적 보정기"""
 
     EFFECT_VERBS = r"(?:절감|감소|감축|저감|향상|증가|증대|개선|단축|방지|억제|줄|높|낮|늘|상승|하락|제고|축소|완화|경감)"
     NUM = r"\d+(?:[.,]\d+)*"
@@ -21,60 +29,112 @@ class GroundingCorrector:
         rf"(?:(?:기존|종전|관행|일반)\s*(?:[가-힣]{{1,6}}\s*)?대비\s*)?(?:약\s*|최대\s*|평균\s*)?({RANGE})\s*(%|배)\s*{QUALIFIER}?\s*(?:의\s*)?(?=\**\s*{EFFECT_VERBS})",
     )
 
+    @staticmethod
+    def _norm(text: str) -> str:
+        text = re.sub(r"[∼～〜\-–]", "~", text or "")
+        return re.sub(r"[\s,]", "", text)
+
+    @classmethod
+    def check(cls, summary_text: str, source_text: str) -> Dict[str, Any]:
+        source_norm = cls._norm(source_text)
+        removed: List[str] = []
+        kept: List[str] = []
+
+        def replacer(match: re.Match) -> str:
+            figure, unit = match.group(1), match.group(2)
+            if cls._norm(figure + unit) in source_norm:
+                kept.append(f"{figure}{unit}")
+                return match.group(0)
+            removed.append(f"{figure}{unit}")
+            return "유의미한 수준으로 " if unit == "%" else "상당한 수준으로 "
+
+        sanitized = cls.EFFECT_FIGURE_RE.sub(replacer, summary_text)
+        return {"sanitized_text": re.sub(r" {2,}", " ", sanitized), "removed_figures": removed, "kept_figures": kept}
+
     @classmethod
     def sanitize_unverified_figures(cls, summary_text: str, source_text: str) -> str:
-        """원문 텍스트에 나타나지 않는 효과 수치를 정성적 서술로 안전하게 완화합니다."""
-        def replacer(match: re.Match) -> str:
-            figure = match.group(1)
-            if figure in source_text:
-                return match.group(0)  # 원문에 존재하는 수치는 그대로 보존
-            unit = match.group(2)
-            if unit == "%":
-                return "유의미한 수준으로"
-            elif unit == "배":
-                return "상당한 수준으로"
-            return "우수한 정도로"
-
-        return cls.EFFECT_FIGURE_RE.sub(replacer, summary_text)
+        return cls.check(summary_text, source_text)["sanitized_text"]
 
 
-def detect_technology_type(title: str, claims_text: str) -> str:
-    """발명의 명칭 및 청구항 서술어를 분석하여 기술 유형을 자동 판별합니다."""
-    text = f"{title} {claims_text}"
-    if any(k in text for k in ["방법", "공정", "제조법", "처리방법", "추출방법", "단계"]):
-        return "공정 및 제조방법 (Process/Method)"
-    elif any(k in text for k in ["장치", "시스템", "모듈", "기기", "센서", "설비", "기구"]):
-        return "장치 및 시스템 (Apparatus/System)"
-    elif any(k in text for k in ["조성물", "화합물", "추출물", "균주", "제제", "소재"]):
-        return "바이오·화학 소재 및 조성물 (Composition/Bio)"
-    return "복합 응용 기술 (Integrated Technology)"
+def ground_summary_figures(summary_text: str, source_text: str) -> Dict[str, Any]:
+    """LLM 등이 작성한 요약문에서 원문에 없는 효과 수치(예: '30% 절감', '2배 향상')를 찾아 정성적 표현으로 바꿉니다.
+
+    Args:
+        summary_text: 점검할 요약문
+        source_text: 대조할 특허 원문(초록·청구항·명세서)
+    """
+    result = GroundingCorrector.check(summary_text, source_text)
+    result["note"] = (
+        "'수치 + %/배 + 효과 동사' 형태만 점검합니다. 다른 형태의 수치나 정성적 과장 표현은 사람이 확인해야 합니다."
+    )
+    return result
 
 
-def extract_key_spec_chips(source_text: str) -> List[Dict[str, str]]:
-    """명세서 원문에 기재된 핵심 수치 파라미터(온도, 압력, 시간, 농도, 크기 등)를 발췌합니다."""
-    chips = []
+_RANGE = r"\d+(?:\.\d+)?(?:\s*[~∼～\-]\s*\d+(?:\.\d+)?)?"
+_SPEC_PATTERNS = [
+    ("온도 조건", re.compile(rf"({_RANGE})\s*(℃|°C|도씨)")),
+    ("파장", re.compile(rf"({_RANGE})\s*(nm)\b")),
+    ("처리 시간", re.compile(rf"({_RANGE})\s*(시간|분간|초간|일간|분|초)(?![가-힣])")),
+    ("농도/배합비", re.compile(rf"({_RANGE})\s*(wt%|중량\s*%|중량부|%\s*\(v/v\)|%|ppm)")),
+    ("운전 조건", re.compile(rf"({_RANGE})\s*(bar|MPa|kPa|rpm|L/min)\b")),
+]
 
-    # 온도 패턴
-    temp_match = re.search(r"(\d+(?:\s*[~-]\s*\d+)?)\s*(?:℃|도|도씨)", source_text)
-    if temp_match:
-        chips.append({"key": "온도 조건", "value": f"{temp_match.group(1)}℃"})
 
-    # 시간/기간 패턴
-    time_match = re.search(r"(\d+(?:\s*[~-]\s*\d+)?)\s*(?:분|시간|초|일간)", source_text)
-    if time_match:
-        chips.append({"key": "처리 시간", "value": time_match.group(0).strip()})
+def extract_key_spec_chips(source_text: str, limit: int = 6) -> List[Dict[str, str]]:
+    """원문에 적힌 수치 파라미터(온도·파장·시간·농도·운전조건)를 발췌합니다. 없으면 빈 목록을 반환합니다."""
+    chips: List[Dict[str, str]] = []
+    seen = set()
+    for key, pattern in _SPEC_PATTERNS:
+        for m in pattern.finditer(source_text):
+            value = normalize_ws(f"{m.group(1)}{m.group(2)}")
+            if (key, value) in seen:
+                continue
+            seen.add((key, value))
+            start, end = max(0, m.start() - 15), min(len(source_text), m.end() + 10)
+            chips.append({"key": key, "value": value, "context": normalize_ws(source_text[start:end])})
+            if len(chips) >= limit:
+                return chips
+    return chips
 
-    # 비율/농도/수율 패턴
-    ratio_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:wt%|중량%|%|ppm|mM)", source_text)
-    if ratio_match:
-        chips.append({"key": "농도/배합비", "value": ratio_match.group(0).strip()})
 
-    # 압력/유량 패턴
-    pressure_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:bar|MPa|kPa|rpm|L/min)", source_text)
-    if pressure_match:
-        chips.append({"key": "운전 조건", "value": pressure_match.group(0).strip()})
+def _section(text: str, start_pattern: str, end_pattern: str) -> str:
+    m = re.search(rf"(?:{start_pattern})\s*([\s\S]*?)(?=(?:{end_pattern})|\Z)", text)
+    return normalize_ws(m.group(1)) if m else ""
 
-    return chips[:4] or [{"key": "핵심 스펙", "value": "원문 기준 표준 규격"}]
+
+def _sentences(text: str) -> List[str]:
+    return [s.strip() for s in re.split(r"(?<=[.다])\s+", normalize_ws(text)) if len(s.strip()) > 10]
+
+
+def _extract_effect(abstract: str, description: str) -> Optional[str]:
+    effect_section = _section(
+        description,
+        r"【발명의\s*효과】|발명의\s*효과",
+        r"【도면의\s*간단한\s*설명】|도면의\s*간단한\s*설명|【발명을\s*실시하기|발명을\s*실시하기|【|\Z",
+    )
+    if effect_section:
+        return " ".join(_sentences(effect_section)[:2]) or effect_section[:200]
+
+    verb_re = re.compile(GroundingCorrector.EFFECT_VERBS)
+    for text in (description, abstract):
+        hits = [s for s in _sentences(text) if "효과" in s or verb_re.search(s)]
+        if hits:
+            return " ".join(hits[:2])
+    return None
+
+
+def _extract_problem(abstract: str, description: str) -> Dict[str, str]:
+    problem = _section(
+        description,
+        r"【해결하(?:고자|려는)\s*(?:하는\s*)?과제】|해결하(?:고자|려는)\s*(?:하는\s*)?과제",
+        r"【과제의\s*해결\s*수단】|과제의\s*해결\s*수단|【발명의\s*효과】|발명의\s*효과|【",
+    )
+    if problem:
+        return {"text": problem[:300], "source": "명세서 '해결하려는 과제' 발췌"}
+    first = _sentences(abstract)[:1]
+    if first:
+        return {"text": first[0][:300], "source": "초록 첫 문장 발췌 (과제 항목 미기재)"}
+    return {"text": "", "source": "미확인"}
 
 
 def summarize_patent(
@@ -85,95 +145,117 @@ def summarize_patent(
     description: Optional[str] = None,
     applicant: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """특허 원문(명칭, 초록, 청구항, 설명)을 분석하여 기술이전 상담 및 기술영상 제작에 즉시 활용 가능한 고도화 요약서를 생성합니다.
+    """특허 원문(명칭·초록·청구항·명세서)에서 문장을 발췌해 기술이전 상담용 요약 초안을 만듭니다.
 
-    patent-summary-wizard(A4 2쪽 요약서) 및 patent-video-skill(시그니처 구조화) 실무 로직 통합.
+    원문에 없는 효과·수치는 만들지 않으며, 찾지 못한 항목은 '미확인'으로 표시합니다.
     """
-    clean_claims = [c.strip() for c in claims if c.strip()]
-    claims_joined = "\n".join(clean_claims)
-    source_full = f"{title}\n{abstract}\n{claims_joined}\n{description or ''}"
+    description = description or ""
+    clean_claims = [c.strip() for c in claims if c and c.strip()]
+    active = [c for c in clean_claims if not is_deleted_claim(c)]
+    independent = [c for c in active if not is_dependent_claim(c)]
+    main_claim = independent[0] if independent else (active[0] if active else "")
 
-    # 1. 기술 유형 판별
-    tech_type = detect_technology_type(title, claims_joined)
+    warnings: List[str] = []
+    if not main_claim:
+        warnings.append("유효한 청구항이 없어 권리범위 요약을 만들지 못했습니다.")
+    if not abstract.strip():
+        warnings.append("초록이 비어 있습니다.")
 
-    # 2. 독립항(청구항 1항) 권리범위 핵심 추출
-    main_claim = clean_claims[0] if clean_claims else abstract
+    kind = detect_technology_kind(title, main_claim)
+    tech_type = TECH_TYPE_LABELS[kind]
+    elements, subject = split_claim_elements(main_claim) if main_claim else ([], "")
+    is_process = kind in ("method", "mixed") and any("단계" in e for e in elements)
+    label = "단계" if is_process else "구성"
 
-    # 3. 핵심 문제 및 해결 수단 구조화
-    problem_statement = f"종래 기술의 한계 극복: {abstract[:180]}..." if len(abstract) > 180 else abstract
-    solution_statement = f"핵심 권리범위 구성 (청구항 1항): {main_claim[:220]}..." if len(main_claim) > 220 else main_claim
-
-    # 4. 공정 단계 또는 장치 구성 요소 시그니처 분해
-    claim_parts = [p.strip() for p in re.split(r"[;\n]+", main_claim) if len(p.strip()) > 8]
-    workflow_steps = []
-    for idx, part in enumerate(claim_parts[:4], start=1):
-        step_label = f"단계 {idx}" if "방법" in tech_type or "공정" in tech_type else f"핵심 부품 {idx}"
-        workflow_steps.append({"step": step_label, "description": part[:60] + "..." if len(part) > 60 else part})
-
-    # 5. 핵심 스펙 칩 발췌
-    spec_chips = extract_key_spec_chips(source_full)
-
-    # 6. 원문 기재 효과 추출 및 수치 환각 그라운딩 보정
-    raw_effect = f"{title}을(를) 통해 공정 단계를 간소화하고 제품의 품질 및 수율을 안정적으로 향상시킴."
-    sanitized_effect = GroundingCorrector.sanitize_unverified_figures(raw_effect, source_full)
-
-    # 7. 실제 활용 분야 (청구항 기재 여부 구분)
-    apps = [
-        {"application": f"{title} 적용 완제품 제조", "claimed_in_claims": True, "note": "청구항 권리범위 직접 기재"},
-        {"application": "관련 산업 현장 공정 자동화 설비", "claimed_in_claims": False, "note": "명세서 기재 연계 분야"},
+    components = [
+        {"step": f"{label} {idx}", "description": e[:80] + ("..." if len(e) > 80 else "")}
+        for idx, e in enumerate(elements, start=1)
     ]
 
-    # 8. 바이어/수요기업 브리핑용 60초 나레이션 스크립트 (patent-video-skill 스타일)
-    one_line_sub = f"{title}의 핵심 특징을 구현한 {tech_type.split()[0]} 기술"
-    elevator_pitch = [
-        f"[도입] 기존 방식의 비효율과 품질 불균일 문제를 해결하는 {title} 기술입니다.",
-        f"[핵심] {len(claim_parts)}단계 핵심 메커니즘을 통해 불필요한 공정을 줄이고 운전 조건을 최적화했습니다.",
-        f"[효과] {sanitized_effect} 지금 바로 기술실시계약을 통해 현장에 도입할 수 있습니다.",
-    ]
+    source_full = "\n".join([title, abstract, "\n".join(clean_claims), description])
+    effect = _extract_effect(abstract, description)
+
+    pitch = [f"[도입] {title} 기술입니다."]
+    if elements:
+        short = ", ".join(re.sub(r"^상기\s*", "", e)[:25] for e in elements[:4])
+        josa = "로" if label == "단계" else "으로"
+        pitch.append(f"[핵심] 독립항은 {len(elements)}개 {label}{josa} 이루어집니다: {short}{' 등' if len(elements) > 4 else ''}.")
+    pitch.append(f"[효과] {effect}" if effect else "[효과] (명세서의 '발명의 효과'를 확인해 기재하십시오)")
+    pitch.append("[제안] 기술실시계약을 통한 도입을 상담하실 수 있습니다.")
 
     return {
         "patent_id": patent_id,
         "title": title,
-        "applicant": applicant or "소관 기관",
+        "applicant": applicant or "미기재",
         "technology_type": tech_type,
-        "one_line_summary": one_line_sub,
-        "core_problem": problem_statement,
-        "technical_solution": solution_statement,
-        "workflow_or_components": workflow_steps or [{"step": "핵심 구조", "description": main_claim[:100]}],
-        "key_spec_chips": spec_chips,
-        "primary_effect": sanitized_effect,
-        "grounding_verified": True,
-        "commercial_applications": apps,
-        "elevator_pitch_briefing": elevator_pitch,
+        "claimed_subject_matter": subject or "미확인",
+        "core_problem": _extract_problem(abstract, description),
+        "technical_solution": main_claim[:300] + ("..." if len(main_claim) > 300 else ""),
+        "workflow_or_components": components,
+        "key_spec_chips": extract_key_spec_chips(source_full),
+        "primary_effect": {
+            "text": effect or "원문에서 효과 기재를 찾지 못했습니다 (명세서 확인 필요).",
+            "source": "원문 발췌" if effect else "미확인",
+        },
+        "claims_overview": {
+            "total": len(clean_claims),
+            "deleted": len(clean_claims) - len(active),
+            "independent": len(independent),
+        },
+        "elevator_pitch_draft": pitch,
+        "warnings": warnings,
+        "notice": "원문 문장을 발췌·재배열한 자동 초안입니다. 대외 배포 전 원문과 대조하십시오.",
     }
+
+
+EvidenceLevel = Literal["unknown", "concept", "lab_validated", "prototype", "field_validated", "commercial"]
+
+_TRL_BY_EVIDENCE = {
+    "concept": ("TRL 1~3", "기초 원리·개념 수준 (실험 검증 전)"),
+    "lab_validated": ("TRL 3~4", "실험실 규모 성능 검증"),
+    "prototype": ("TRL 5~6", "시제품 제작 및 유사 환경 성능 검증"),
+    "field_validated": ("TRL 7", "실제 운용 환경(현장) 실증 완료"),
+    "commercial": ("TRL 8~9", "제품화·양산 또는 판매 실적 보유"),
+}
 
 
 def evaluate_commercialization(
     technology_domain: str,
-    claims_count: int,
-    has_experimental_data: bool = True,
-    target_market: str = "농산업",
+    evidence_level: EvidenceLevel = "unknown",
+    target_market: Optional[str] = None,
+    evidence_note: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """기술 성숙도(TRL 1~9단계)와 사업화 가능성 및 진입 장벽을 진단합니다. (atipsum 실무 모델)"""
-    if has_experimental_data:
-        estimated_trl = 6
-        trl_description = "시제품 성능 검증 완료 (TRL 5~6단계) - 파일럿 스케일 실증 및 양산화 준비 단계"
-    else:
-        estimated_trl = 3
-        trl_description = "실험실 규모 개념 검증 (TRL 3~4단계) - 추가 실증 시험 및 현장 데이터 보강 필요"
+    """확인된 실증 근거 수준으로 기술성숙도(TRL) 범위를 판정합니다.
 
-    commercialization_score = 75 if has_experimental_data else 55
+    Args:
+        technology_domain: 기술 분야
+        evidence_level: 확인된 근거 수준 ("unknown"(모름), "concept"(개념), "lab_validated"(실험실 검증),
+            "prototype"(시제품 검증), "field_validated"(현장 실증), "commercial"(제품화·판매))
+        target_market: 목표 시장 (선택)
+        evidence_note: 근거 자료 메모 (예: "2024년 농가 3곳 현장 실증 보고서")
+    """
+    checkpoints = [
+        "원료 수급 안정성 및 제조 단가",
+        "해당 시 인허가·등록 규제(농약관리법·비료관리법·식품위생법 등) 소요 기간",
+        "수요기업 기술이전 시 실시권 유형(통상/전용) 및 절차",
+    ]
 
+    if evidence_level == "unknown":
+        return {
+            "technology_domain": technology_domain,
+            "target_market": target_market or "미지정",
+            "estimated_trl": None,
+            "trl_description": "TRL 미산정: 실증 근거(시제품·현장실증·판매 실적 등) 정보가 없습니다.",
+            "how_to_assess": "evidence_level에 확인된 근거 수준을 지정하면 TRL 범위를 산정합니다.",
+            "key_checkpoints": checkpoints,
+        }
+
+    trl, desc = _TRL_BY_EVIDENCE[evidence_level]
     return {
-        "target_market": target_market,
         "technology_domain": technology_domain,
-        "estimated_trl": estimated_trl,
-        "trl_description": trl_description,
-        "commercialization_score": commercialization_score,
-        "market_readiness": "우수" if commercialization_score >= 70 else "보통",
-        "key_checkpoints": [
-            "원료 수급 안정성 및 제조 단가 경쟁력",
-            "인허가 규제(농약/비료/식품위생법 등) 인증 소요 기간",
-            "수요 기업 기술이전 시 전용실시/통상실시 계약 전략 수립",
-        ],
+        "target_market": target_market or "미지정",
+        "estimated_trl": trl,
+        "trl_description": desc,
+        "evidence_basis": evidence_note or "근거 자료 미기재 (판정 근거를 함께 기록하십시오)",
+        "key_checkpoints": checkpoints,
     }
