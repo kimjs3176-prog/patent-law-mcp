@@ -11,6 +11,7 @@
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from patent_law_mcp.policies.policy_manager import get_policy_table
 from patent_law_mcp.tools.analysis import evaluate_commercialization, ground_summary_figures, summarize_patent
 from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
@@ -124,6 +125,12 @@ register(
     evaluate_exclusive_renewal,
     "evaluate_exclusive_renewal",
     "국유특허 전용실시계약 갱신 검토 (투자금 미회수·인허가 시험 진행 사유 자동 판정, 신청 기한 확인)",
+)
+
+register(
+    get_policy_table,
+    "get_policy_table",
+    "현재 적용 중인 법령·고시 기준값(최소실시료·보상 비율·비과세 한도 등), 근거 조항, 원문 확인이 필요한 항목 조회",
 )
 
 # 4. 권리범위·포트폴리오·수요기업

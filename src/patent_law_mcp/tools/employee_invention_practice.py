@@ -1,184 +1,298 @@
-"""직무발명 및 국유특허 처분 실무 도구 (지식재산처고시 제2025-4호 및 국유특허 업무편람 반영)
+"""직무발명 및 국유특허 처분·보상 실무 도구
 
-주요 실무 기능:
-- process_invention_disclosure: 직무발명 신고 및 승계 심의 안건 작성
-- calculate_disposal_compensation: 직접비용 공제 후 순수입 50% 처분보상금 산출 및 소득세 비과세 한도 적용
-- evaluate_unutilized_free_license: 등록 후 3년 미실시 국유특허 무상실시 및 중소기업 재계약 우대 심의
-- evaluate_exclusive_renewal: 전용실시 갱신 법정 5대 사유 및 만료 30일 전 신청 요건 심의
+기준값과 근거 조항은 모두 정책 YAML(policies/kipo_notice_rules.yaml)에서 읽습니다.
+- process_invention_disclosure: 직무발명 신고 접수 및 심의 안건 초안
+- calculate_disposal_compensation: 처분보상금 산출 및 발명자별 비과세·과세 구분
+- evaluate_unutilized_free_license: 미활용 국유특허 무상 통상실시 검토
+- evaluate_exclusive_renewal: 전용실시계약 갱신 검토
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
 from patent_law_mcp.policies.policy_manager import policy_manager
+from patent_law_mcp.tools.contract_practice import require_choice
 
 
 def process_invention_disclosure(
     title: str,
-    inventor_names: List[str],
+    inventor_names: Annotated[List[str], Field(min_length=1)],
     research_source: str = "국가 R&D 연구과제",
     has_prior_publication: bool = False,
     is_within_official_duties: bool = True,
 ) -> Dict[str, Any]:
-    """국가공무원 및 공공연구기관 연구원의 직무발명 신고서를 심의 안건으로 접수하고 처분 요건을 검토합니다."""
+    """국가공무원 등 직무발명 신고를 접수하고 직무발명심의위원회 상정 안건 초안을 만듭니다.
+
+    Args:
+        title: 발명의 명칭
+        inventor_names: 발명자 이름 목록
+        research_source: 연구 재원 (예: "국가 R&D 연구과제")
+        has_prior_publication: 출원 전 논문·학회 등으로 공개했는지 여부
+        is_within_official_duties: 직무 범위 내 발명인지 여부
+    """
+    if not inventor_names or not all(n.strip() for n in inventor_names):
+        raise ValueError("발명자를 1명 이상 입력하십시오.")
     if not is_within_official_duties:
         return {
-            "status": "자유발명 판정 권고",
-            "legal_basis": "발명진흥법 제10조 (직무범위 외 발명)",
-            "action_required": "직무발명 승계 불가. 발명자 개인 권리 귀속 통보서 발송",
+            "status": "자유발명 판정 검토",
+            "legal_basis": "발명진흥법 제2조 제2호 (직무발명의 정의)",
+            "action_required": "직무 범위 밖 발명이면 국가 승계 대상이 아닙니다. 판단 근거를 기록하고 발명자에게 통지하십시오.",
         }
 
+    authority = policy_manager.metadata.get("competent_authority", "지식재산처")
+    reg = policy_manager.section("registration_compensation")
+    art = policy_manager.articles
     return {
-        "status": "국가승계(국유특허) 심의 대상 접수 완료",
-        "legal_basis": f"{policy_manager.audit_trail_basis} (직무발명의 승계)",
+        "status": "국가 승계 심의 대상 접수",
+        "legal_basis": policy_manager.metadata["parent_regulation"],
         "invention_title": title,
         "inventors": inventor_names,
         "rnd_source": research_source,
-        "novelty_risk": "공지예외주장 출원(특허법 제30조) 필수 검토" if has_prior_publication else "신규성 상실 위험 없음",
+        "novelty_risk": (
+            "출원 전 공개 이력이 있어 공지예외 주장(특허법 제30조, 공개일부터 12개월 이내 출원) 필요 여부를 검토하십시오."
+            if has_prior_publication
+            else "신고 기준 출원 전 공개 이력 없음 (발명자 확인 필요)"
+        ),
         "administrative_steps": [
-            "1. 직무발명심의위원회 안건 상정 (직무기여도 및 국가승계 여부 의결)",
-            "2. 특허청 국유특허 대리인(전담 변리사) 지정 및 출원 의뢰",
-            "3. 출원등록보상금(지식재산특별회계) 지급 품의 진행",
+            "1. 직무발명심의위원회 안건 상정 (직무 해당 여부·국가 승계 여부 의결)",
+            f"2. {authority} 국유특허 출원 절차에 따라 출원 의뢰",
+            f"3. 등록 시 등록보상금 지급 품의 (특허 {reg['patent']:,}원, {art['registration_compensation']})",
         ],
+        "legal_audit_basis": policy_manager.audit_block(),
     }
+
+
+EmploymentStatus = Literal["employed", "retired"]
+
+
+class InventorShare(BaseModel):
+    name: str = Field(..., min_length=1, description="발명자 이름")
+    share_rate: float = Field(..., gt=0, le=1, description="기여 지분 (0~1 소수, 예: 0.7)")
+    employment_status: EmploymentStatus = Field("employed", description="수령 시점 신분: employed(재직) / retired(퇴직)")
+    tax_free_used_this_year_krw: int = Field(0, ge=0, description="올해 이미 비과세 적용받은 직무발명보상금 (원)")
+    marginal_income_tax_rate: Optional[float] = Field(
+        None, ge=0, le=0.45, description="재직자 세액 추정용 한계 소득세율 (예: 0.24). 없으면 근로소득 세액은 추정하지 않음"
+    )
 
 
 def calculate_disposal_compensation(
-    contract_income_krw: int,
-    direct_expenses_krw: int,
-    inventor_shares: List[Dict[str, Any]],
+    contract_income_krw: Annotated[int, Field(ge=0)],
+    inventor_shares: Annotated[List[InventorShare], Field(min_length=1)],
+    direct_expenses_krw: Annotated[int, Field(ge=0)] = 0,
 ) -> Dict[str, Any]:
-    """지식재산처 고시 제11조 및 소득세법에 따라 국유특허 처분수입금 중 순수입의 50%를 처분보상금으로 산출합니다."""
-    comp_rules = policy_manager.disposal_compensation_rules
-    payout_ratio = comp_rules.get("net_income_payout_ratio", 0.50)
-    tax_free_limit = comp_rules.get("tax_free_limit_annual", 7_000_000)
+    """국유특허 처분수입금으로 처분보상금을 산출하고 발명자별 비과세·과세 금액을 나눕니다.
 
-    net_income = max(0, contract_income_krw - direct_expenses_krw)
-    total_compensation_pool = int(round(net_income * payout_ratio))
+    지분(share_rate)은 0~1 소수로 입력하며 합계가 1이어야 합니다.
+    세금: 재직 중 수령분은 근로소득(다른 급여와 합산 과세), 퇴직 후 수령분은 기타소득으로 구분하고,
+    비과세 한도는 연간 합산 기준이므로 올해 이미 받은 비과세 금액을 빼고 적용합니다.
 
-    payout_table = []
-    for inv in inventor_shares:
-        name = inv.get("name", "발명자")
-        rate = float(inv.get("share_rate", 1.0))
-        payout = int(round(total_compensation_pool * rate))
+    Args:
+        contract_income_krw: 처분수입금 (기술료 수입, 원)
+        inventor_shares: 발명자별 지분·신분 정보
+        direct_expenses_krw: 공제할 직접비용 (원, 정책상 공제 대상일 때만 반영)
+    """
+    shares = [s if isinstance(s, InventorShare) else InventorShare.model_validate(s) for s in inventor_shares]
+    if not shares:
+        raise ValueError("발명자를 1명 이상 입력하십시오.")
+    if contract_income_krw < 0 or direct_expenses_krw < 0:
+        raise ValueError("수입금과 비용은 0 이상이어야 합니다.")
+    total_share = sum(s.share_rate for s in shares)
+    if abs(total_share - 1.0) > 0.001:
+        raise ValueError(
+            f"지분 합계가 100%가 아닙니다 (현재 {total_share * 100:.1f}%). 지분은 0~1 사이 소수로 입력하십시오 (예: 0.7, 0.3)."
+        )
 
-        # 세무 처리 가이드 (비과세 초과분에 대해 기타소득세 22% 원천징수)
-        taxable_amount = max(0, payout - tax_free_limit)
-        tax_estimate = int(round(taxable_amount * 0.22))
-        net_payout = payout - tax_estimate
+    comp = policy_manager.section("disposal_compensation")
+    tax = policy_manager.section("income_tax")
+    art = policy_manager.articles
+    limit = tax["tax_free_limit_annual"]
 
-        payout_table.append({
-            "inventor_name": name,
-            "share_rate": f"{rate * 100:.1f}%",
-            "gross_compensation": f"{payout:,}원",
-            "tax_free_portion": f"{min(payout, tax_free_limit):,}원 (비과세 한도 적용)",
-            "estimated_withholding_tax": f"{tax_estimate:,}원 (초과분 기타소득세 22%)",
-            "net_payout": f"{net_payout:,}원",
-        })
+    if comp["deduct_direct_expenses"]:
+        base = max(0, contract_income_krw - direct_expenses_krw)
+        base_note = f"처분수입금 {contract_income_krw:,}원 − 직접비용 {direct_expenses_krw:,}원"
+    else:
+        base = contract_income_krw
+        base_note = f"처분수입금 {contract_income_krw:,}원 (정책상 비용 공제 안 함)"
+    pool = int(base * comp["payout_ratio"])
+
+    # 원 단위 내림 후 남는 금액은 지분이 가장 큰 발명자에게 더해 합계를 맞춘다
+    payouts = [int(pool * s.share_rate) for s in shares]
+    payouts[max(range(len(shares)), key=lambda i: shares[i].share_rate)] += pool - sum(payouts)
+
+    table = []
+    for s, payout in zip(shares, payouts):
+        remaining_free = max(0, limit - s.tax_free_used_this_year_krw)
+        tax_free = min(payout, remaining_free)
+        taxable = payout - tax_free
+        row: Dict[str, Any] = {
+            "inventor_name": s.name,
+            "share_rate": f"{s.share_rate * 100:.1f}%",
+            "gross_compensation_krw": payout,
+            "tax_free_krw": tax_free,
+            "taxable_krw": taxable,
+        }
+        if s.employment_status == "employed":
+            row["income_type"] = "근로소득 (재직 중 수령)"
+            if taxable and s.marginal_income_tax_rate is not None:
+                income_tax = taxable * s.marginal_income_tax_rate
+                row["estimated_tax_krw"] = int(round(income_tax * (1 + tax["local_income_tax_ratio"])))
+                row["tax_note"] = f"한계세율 {s.marginal_income_tax_rate:.0%} + 지방소득세로 추정. 실제 세액은 급여 원천징수·연말정산에서 확정"
+            else:
+                row["estimated_tax_krw"] = None
+                row["tax_note"] = "과세분은 다른 근로소득과 합산해 원천징수·연말정산 (세액 추정은 marginal_income_tax_rate 입력 시)" if taxable else "전액 비과세"
+        else:
+            row["income_type"] = "기타소득 (퇴직 후 수령)"
+            row["estimated_tax_krw"] = int(round(taxable * tax["retired_withholding_rate"]))
+            row["tax_note"] = (
+                f"과세분 원천징수 {tax['retired_withholding_rate']:.0%} (소득세+지방소득세). 다른 기타소득과 합산해 종합과세될 수 있음"
+                if taxable
+                else "전액 비과세"
+            )
+        row["net_payout_krw"] = payout - (row["estimated_tax_krw"] or 0)
+        table.append(row)
 
     return {
-        "regulatory_basis": f"{policy_manager.audit_trail_basis} 제11조 제2항",
-        "gross_contract_income": f"{contract_income_krw:,}원",
-        "deducted_direct_expenses": f"{direct_expenses_krw:,}원 (출원·등록 및 기술이전 직접 소요비용)",
-        "net_disposal_income": f"{net_income:,}원",
-        "total_compensation_amount": f"{total_compensation_pool:,}원 (순처분수입의 {int(payout_ratio*100)}%)",
-        "payment_table": payout_table,
-        "tax_note": f"소득세법 제12조에 따른 직무발명보상금 비과세 한도(연간 {tax_free_limit:,}원)를 반영한 실무 세액 추정치입니다.",
+        "regulatory_basis": art["disposal_compensation"],
+        "compensation_base_krw": base,
+        "compensation_base_note": base_note,
+        "payout_ratio": comp["payout_ratio"],
+        "total_compensation_krw": pool,
+        "payment_table": table,
+        "tax_basis": f"{art['tax_free_limit']} — 직무발명보상금 비과세 한도 연 {limit:,}원 (재직·퇴직 수령분 합산)",
         "administrative_checklist": [
-            "지식재산특별회계 국고 세입 조치 영수증 첨부",
-            "발명자 전원 기여율 합의서 대조 확인",
-            "별표 1 '보상금등의 감액기준' 해당 여부 점검 (부실출원 등 감액 사유)",
+            "처분수입금 세입 조치 증빙 첨부",
+            "발명자 전원의 지분 합의서 대조",
+            "올해 이미 지급된 직무발명보상금(비과세 적용분) 확인",
+            "보상금 감액 사유 해당 여부 점검",
         ],
+        "legal_audit_basis": policy_manager.audit_block(),
     }
 
 
+ApplicantScale = Literal["farmer", "sme", "middle", "large"]
+
+
 def evaluate_unutilized_free_license(
-    registration_years_elapsed: int,
-    applicant_scale: str = "sme",  # "sme", "farmer", "large"
+    registration_years_elapsed: Annotated[int, Field(ge=0)],
+    applicant_scale: ApplicantScale = "sme",
     has_prior_license: bool = False,
-    has_joint_patentee: bool = False,  # 민간 공동출원인 존재 여부
+    has_joint_patentee: bool = False,
 ) -> Dict[str, Any]:
-    """등록 후 3년 미활용 국유특허의 3년 무상 통상실시 및 중소기업 재계약 우대 요율을 심의합니다."""
-    free_rules = policy_manager.unutilized_free_rules
-    threshold = free_rules.get("unutilized_years_threshold", 3)
-    max_years = free_rules.get("max_free_license_years", 3)
-    discount_rate = free_rules.get("sme_renewal_discount_rate", 0.02)
+    """등록 후 일정 기간 실시되지 않은 국유특허의 무상 통상실시 해당 여부를 검토합니다.
 
-    is_unutilized = registration_years_elapsed >= threshold and not has_prior_license
+    Args:
+        registration_years_elapsed: 등록 후 경과 연수
+        applicant_scale: 신청자 규모 ("farmer", "sme", "middle", "large")
+        has_prior_license: 그동안 실시(계약) 이력이 있는지 여부
+        has_joint_patentee: 민간 공동권리자가 있는지 여부
+    """
+    require_choice(applicant_scale, ("farmer", "sme", "middle", "large"), "applicant_scale")
+    if registration_years_elapsed < 0:
+        raise ValueError("registration_years_elapsed는 0 이상이어야 합니다.")
 
-    if is_unutilized:
-        joint_owner_guidance = (
-            "⚠️ 공동권리자 주의: 본 특허에 민간 기업 등 공동권리자가 존재할 경우, 고시 제4조 제4항에 따라 "
-            "반드시 '공동권리자의 통상실시 서면 동의서'를 첨부해야 하며, 민간 지분에 대한 기술료는 별도 협의해야 합니다."
-            if has_joint_patentee
-            else "단독 소유: 국가 단독 소유 특허로서 지식재산처 단독 처분 가능"
+    rules = policy_manager.section("unutilized_free_license")
+    art = policy_manager.articles
+    threshold, max_years = rules["unutilized_years_threshold"], rules["max_free_license_years"]
+
+    if registration_years_elapsed < threshold or has_prior_license:
+        reason = (
+            f"등록 후 {registration_years_elapsed}년으로 기준({threshold}년)에 못 미칩니다."
+            if registration_years_elapsed < threshold
+            else "실시(계약) 이력이 있어 미활용 특허 요건에 해당하지 않습니다."
         )
-
-        return {
-            "eligible_for_free_license": True,
-            "regulatory_basis": f"{policy_manager.audit_trail_basis} 제3조 제2항 (미활용 국유특허 활용 촉진)",
-            "license_type": "무상 통상실시권",
-            "max_free_period": f"최대 {max_years}년 (제3조 제3항)",
-            "joint_patentee_check": joint_owner_guidance,
-            "subsequent_terms": {
-                "renewal_policy": f"최초 {max_years}년 무상실시 종료 후 연장 시 유상 전환 필수 (제6조 제1항)",
-                "sme_preferential_rate": (
-                    f"중소기업이 무상실시 종료 후 재실시 요청 시 실시료 산정 기본율을 {int(discount_rate*100)}%로 인하 적용 (제7조)"
-                    if applicant_scale == "sme"
-                    else "일반 유상 요율 적용"
-                ),
-            },
-            "required_documents": [
-                "별지 제1호 서식 국유특허 무상실시 신청서",
-                "사업화 추진일정 및 자금 조달 계획을 포함한 사업계획서",
-                "무상실시 사유서 (공동권리자 존재 시 통상실시 동의서 필수)",
-            ],
-            "competitor_limit_note": "신청자 다수 시 과당경쟁 방지를 위해 사업계획서 실현가능성 및 신청순서에 따라 실시자 수 제한 가능 (제5조)",
-        }
-    else:
         return {
             "eligible_for_free_license": False,
-            "reason": (
-                f"등록 후 경과 기간이 {registration_years_elapsed}년으로 {threshold}년 미만이거나 이미 실시 이력이 있어 "
-                "제3조 제2항에 따른 미실시 국유특허 자동 무상실시 대상이 아닙니다. 일반 유상계약 또는 공익 감면 요건을 검토하십시오."
-            ),
+            "reason": reason,
+            "alternatives": f"유상 통상실시 또는 무상 처분 사유({art['free_disposal_grounds']}) 해당 여부를 검토하십시오.",
+            "legal_audit_basis": policy_manager.audit_block(),
         }
+
+    cautions = []
+    if has_joint_patentee and rules["joint_patentee_written_consent_required"]:
+        cautions.append(
+            f"민간 공동권리자가 있으므로 공동권리자의 통상실시 서면 동의서가 필요합니다 ({art['joint_patentee_consent']}). "
+            "민간 지분의 실시료는 별도 협의하십시오."
+        )
+    if applicant_scale in ("middle", "large"):
+        cautions.append("중견·대기업 신청이 무상실시 대상에 포함되는지는 고시 원문으로 확인하십시오.")
+
+    return {
+        "eligible_for_free_license": True,
+        "regulatory_basis": f"{art['free_license']} (미활용 국유특허 활용 촉진)",
+        "license_type": "무상 통상실시권",
+        "max_free_period": f"최대 {max_years}년",
+        "ownership_check": "민간 공동권리자 있음" if has_joint_patentee else "국가 단독 소유 (신청 시 등록원부로 확인)",
+        "cautions": cautions,
+        "subsequent_terms": {
+            "after_free_period": f"무상 기간 종료 후 계속 실시하려면 유상 전환 ({art['free_license_paid_conversion']})",
+            "sme_preferential_rate": (
+                f"중소기업 재계약 시 실시료 기본율 {rules['sme_renewal_base_rate_reduction_pp']}%p 인하 ({art['sme_renewal_rate']})"
+                if applicant_scale == "sme"
+                else "일반 유상 요율 적용"
+            ),
+        },
+        "required_documents": [
+            "국유특허 무상실시 신청서 (고시 별지 서식)",
+            "사업화 추진 일정과 자금 조달 계획을 담은 사업계획서",
+            "공동권리자가 있으면 통상실시 서면 동의서",
+        ],
+        "licensee_limit_note": f"신청자가 많으면 사업계획의 실현 가능성 등으로 실시자 수를 제한할 수 있음 ({art['licensee_limit']})",
+        "legal_audit_basis": policy_manager.audit_block(),
+    }
 
 
 def evaluate_exclusive_renewal(
-    cumulative_commercial_revenue_krw: int,
-    cumulative_investment_krw: int,
+    cumulative_commercial_revenue_krw: Annotated[int, Field(ge=0)],
+    cumulative_investment_krw: Annotated[int, Field(ge=0)],
+    expiry_days_remaining: int,
     ongoing_clinical_or_regulatory_tests: bool = False,
-    expiry_days_remaining: int = 45,
 ) -> Dict[str, Any]:
-    """지식재산처 고시 제10조에 따라 국유특허 전용실시계약의 갱신 적합성을 심의합니다."""
-    renewal_rules = policy_manager.exclusive_renewal_rules
-    deadline_days = renewal_rules.get("application_deadline_days_before_expiry", 30)
+    """국유특허 전용실시계약의 갱신 가능성을 검토합니다.
 
-    reasons_met = []
+    자동 판정하는 갱신 사유는 (1) 사업화 수익이 투자 비용보다 적은 경우, (2) 인허가·등록 시험 진행 중인 경우 두 가지입니다.
+    고시의 다른 갱신 사유는 자동 판정하지 않으므로 해당하면 별도로 검토하십시오.
 
-    # 1호: 사업화 수익 < 투자 비용
+    Args:
+        cumulative_commercial_revenue_krw: 누적 사업화 수익 (원)
+        cumulative_investment_krw: 누적 투자 비용 (원)
+        expiry_days_remaining: 계약 만료까지 남은 일수 (이미 지났으면 음수)
+        ongoing_clinical_or_regulatory_tests: 인허가·등록 시험 진행 여부
+    """
+    if cumulative_commercial_revenue_krw < 0 or cumulative_investment_krw < 0:
+        raise ValueError("수익과 투자 비용은 0 이상이어야 합니다.")
+
+    art = policy_manager.articles
+    deadline = policy_manager.section("exclusive_renewal")["application_deadline_days_before_expiry"]
+    min_royalty = policy_manager.section("exclusive_licensing")["minimum_royalty_amount"]
+
+    grounds = []
     if cumulative_commercial_revenue_krw < cumulative_investment_krw:
-        reasons_met.append(
-            f"사업화 수익({cumulative_commercial_revenue_krw:,}원)이 투자 비용({cumulative_investment_krw:,}원)보다 적음 (제10조 제1항 제1호)"
+        grounds.append(
+            f"사업화 수익({cumulative_commercial_revenue_krw:,}원)이 투자 비용({cumulative_investment_krw:,}원)보다 적음"
         )
-
-    # 2호: 인허가/등록 시험 진행
     if ongoing_clinical_or_regulatory_tests:
-        reasons_met.append("사업화를 위한 후속연구 또는 법령에 따른 인허가·등록 시험 진행 중 (제10조 제1항 제2호)")
+        grounds.append("사업화를 위한 인허가·등록 시험 진행 중")
 
-    is_on_time = expiry_days_remaining >= deadline_days
-    can_renew = bool(reasons_met) and is_on_time
+    on_time = expiry_days_remaining >= deadline
+    if not on_time:
+        assessment = "신청 기한 경과"
+    elif grounds:
+        assessment = "자동 판정 사유 충족"
+    else:
+        assessment = "자동 판정 사유 미충족 — 고시의 다른 갱신 사유 해당 여부 검토 필요"
 
     return {
-        "can_renew_exclusive_contract": can_renew,
-        "regulatory_basis": f"{policy_manager.audit_trail_basis} 제10조 (전용실시계약의 갱신)",
-        "verified_renewal_grounds": reasons_met,
+        "assessment": assessment,
+        "regulatory_basis": f"{art['exclusive_renewal']} (전용실시계약의 갱신)",
+        "verified_renewal_grounds": grounds,
+        "unchecked_grounds_note": "수익·투자 비교와 인허가 시험 외의 갱신 사유는 자동 판정하지 않습니다.",
         "application_deadline_status": (
-            f"신청 기한 적합 (만료 {expiry_days_remaining}일 전 신청, 기준: {deadline_days}일 전까지)"
-            if is_on_time
-            else f"⚠️ 기한 초과 리스크 (만료 {expiry_days_remaining}일 전으로 {deadline_days}일 규정 위반 주의)"
+            f"기한 내 (만료 {expiry_days_remaining}일 전, 기준: {deadline}일 전까지 신청)"
+            if on_time
+            else f"기한 경과 (만료 {expiry_days_remaining}일 전, 기준: {deadline}일 전까지 신청)"
         ),
-        "financial_conditions": "갱신 시 최소실시료(300만원 이상) 및 전용실시 기간 재협의 가능 (제9조 및 제10조 제5항)",
-        "prerequisite": "전용실시에 관한 실제 사업화 실적이 존재하거나 사업화 노력을 지속한 경우에 한함 (제10조 제3항)",
+        "contract_method": f"갱신 재계약은 경쟁입찰 예외로 수의계약 가능 ({art['exclusive_renewal_private_contract']})",
+        "financial_conditions": f"갱신 시에도 전용실시 최소실시료({min_royalty:,}원 이상) 기준 적용 ({art['exclusive_minimum_royalty']})",
+        "legal_audit_basis": policy_manager.audit_block(),
     }
