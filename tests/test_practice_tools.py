@@ -71,6 +71,8 @@ def test_exclusive_mentions_bidding_and_minimum_royalty():
     r = design_licensing_terms("x", "exclusive", "farmer")
     assert r["financial_terms"]["lump_sum_fee_krw"] == 3_000_000
     assert any("경쟁입찰" in p for p in r["required_procedures"])
+    exceptions = r["financial_terms"]["private_contract_exceptions"]
+    assert len(exceptions) == 7 and exceptions[6].startswith("7. 2회 이상 유찰")  # 규정 제11조 제2항 단서
 
 
 def test_review_negations_are_not_pass():
@@ -91,21 +93,29 @@ def test_review_amount_below_minimum_fails():
 
 
 # ---------------------------------------------------------------- 무상실시·갱신
-def test_free_license_large_company_gets_caution():
+def test_free_license_joint_owner_and_sme_rate():
+    # 고시 제3조 제2항은 신청자 규모를 제한하지 않음, 제4조 제4항 공동권리자 동의서, 제7조 기본율 2%로
     r = evaluate_unutilized_free_license(5, "large", has_joint_patentee=True)
     assert r["eligible_for_free_license"] is True
-    assert len(r["cautions"]) == 2
+    assert len(r["cautions"]) == 1 and "고시 제4조 제4항" in r["cautions"][0]
+    sme = evaluate_unutilized_free_license(5, "sme")
+    assert "기본율을 2%로 낮추어 적용할 수 있음 (고시 제7조)" in sme["subsequent_terms"]["sme_preferential_rate"]
 
 
 def test_free_license_not_eligible_before_threshold():
     assert evaluate_unutilized_free_license(2)["eligible_for_free_license"] is False
 
 
-def test_renewal_does_not_claim_all_grounds():
-    r = evaluate_exclusive_renewal(10, 5, 45)
-    assert r["assessment"].startswith("자동 판정 사유 미충족")
-    r = evaluate_exclusive_renewal(5, 10, 10)
-    assert r["assessment"] == "신청 기한 경과"
+def test_renewal_five_grounds_and_conditions():
+    # 고시 제10조 제1항 각 호 5개 사유, 제2항 협의 허락, 제3항 사업화 실적 요건, 제4항 30일 전 신청
+    assert len(evaluate_exclusive_renewal(10, 5, 45)["all_grounds"]) == 5
+    assert evaluate_exclusive_renewal(10, 5, 45)["assessment"].startswith("갱신 사유 없음")
+    r = evaluate_exclusive_renewal(10, 5, 45, inventor_info_unavailable=True)
+    assert r["assessment"].startswith("갱신 사유 충족") and r["verified_renewal_grounds"][0].startswith("5.")
+    assert evaluate_exclusive_renewal(5, 10, 45)["verified_renewal_grounds"][0].startswith("1. 사업화수익")
+    assert evaluate_exclusive_renewal(10, 5, 45, revenue_insufficient_for_period=True)["assessment"].startswith("제1항 사유는 없으나")
+    assert evaluate_exclusive_renewal(5, 10, 45, has_commercialization_record_or_effort=False)["assessment"].startswith("갱신 불가")
+    assert evaluate_exclusive_renewal(5, 10, 10)["assessment"].startswith("신청 기한 경과")
 
 
 # ---------------------------------------------------------------- 권리범위 대조

@@ -87,7 +87,7 @@ def design_licensing_terms(
         if excl["competitive_bidding_required"]:
             procedures.append(
                 f"전용실시권 설정은 경쟁입찰이 원칙입니다 ({art['exclusive_competitive_bidding']}). "
-                "수의계약은 같은 항 각 호의 사유에 해당할 때만 가능합니다."
+                "수의계약은 같은 항 단서 각 호의 사유에 해당할 때만 가능합니다."
             )
         procedures.append(f"전용실시권은 등록해야 효력이 생깁니다 ({art['exclusive_license_registration']}). 등록비용 부담 주체를 명시하십시오.")
     else:
@@ -125,6 +125,8 @@ def design_licensing_terms(
             "basis": art["exclusive_renewal"],
         })
 
+    if national and is_exclusive:
+        financial["private_contract_exceptions"] = excl["private_contract_exceptions"]
     return {
         "patent_id": patent_id,
         "license_structure": {

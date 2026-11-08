@@ -3,34 +3,41 @@
 # - 법령·고시가 바뀌면 이 파일만 고치면 됩니다. 파일이 바뀌면 다음 도구 호출 때 자동으로 다시 읽습니다.
 # - 필수 키가 빠지거나 형식이 틀리면 서버가 오류를 내고 멈춥니다 (조용히 기본값을 쓰지 않음).
 # - 다른 파일을 쓰려면 환경변수 PATENT_LAW_MCP_POLICY_FILE에 경로를 지정하십시오.
-# - verification_notes의 항목은 원문 대조가 끝나면 지우십시오. 도구 출력에 그대로 표시됩니다.
+# - verification_notes에는 원문과 대조해도 해소되지 않은 쟁점만 남깁니다. 도구 출력에 그대로 표시됩니다.
+#
+# 원문 대조 (2026-11-08, 국가법령정보센터)
+# - 고시: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령 [지식재산처고시 제2025-4호, 2025.10.30. 시행]
+#   제3조·제4조·제5조·제6조·제7조·제9조·제10조·제11조 문언과 아래 수치 일치 확인
+# - 규정: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 [대통령령 제35809호, 2025.10.01. 시행]
+#   제10조 제2항, 제11조, 제16조, 제17조 확인
+# - 소득세법 시행령 제17조의3 [대통령령 제36737호, 2026.10.01. 시행]: 연 700만원, 특수관계인 제외 확인
 
 metadata:
   profile_type: "national"
   notice_name: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령"
   notice_id: "지식재산처고시 제2025-4호"
   effective_date: "2025-10-30"
-  parent_regulation: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 (대통령령, 2025.10.01. 시행)"
-  competent_authority: "지식재산처"
+  parent_regulation: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 (대통령령 제35809호, 2025.10.01. 시행)"
+  competent_authority: "지식재산처 (지식재산거래과)"
+  verified_on: "2026-11-08"
 
 verification_notes:
-  - "고시(제2025-4호) 원문 미대조: 고시 조항번호와 300만 원·60일·30일·3년 기준은 원문 확인 필요"
-  - "처분보상금: 규정 제17조는 비율을 처분수입금의 50% '범위'로 정함 — 고정 50% 적용과 직접비용 공제 여부는 고시 원문 확인 필요"
-  - "중소기업 재계약 우대: '기본율 2%p 인하'인지 '기본율을 2%로 인하'인지 고시 원문 확인 필요"
+  - "처분보상금: 규정 제17조 제1항은 '처분수입금의 100분의 50 이상의 범위에서 고시하는 바에 따라' 지급하도록 하고, 고시 제11조 제2항은 '직접비용을 공제한 금액의 100분의 50'으로 정함. 이 도구는 고시 산식을 적용하므로, 공제 후 금액이 처분수입금의 50%에 못 미치는 경우의 적용은 실무 확인 필요"
+  - "미활용 특허 무상실시: 고시 제3조 제2항은 근거를 '영 제10조 제2항 제1호'로 들지만, 현행 영 제10조 제2항 제1호는 '농업인·어업인의 소득 증대'임 (2024.11.12. 영 개정 후 조문 대응 확인 필요)"
   - "기업 규모별 요율(contract_practice.reference_rates_by_scale)은 기관 내부 참고값이며 법정 요율이 아님"
 
 # 출력에 표기되는 근거 조항 — 조항 번호가 바뀌면 여기만 고치십시오.
 articles:
-  free_license: "고시 제3조"
+  free_license: "고시 제3조 제2항"
   joint_patentee_consent: "고시 제4조 제4항"
   licensee_limit: "고시 제5조"
   free_license_paid_conversion: "고시 제6조 제1항"
   sme_renewal_rate: "고시 제7조"
   exclusive_minimum_royalty: "고시 제9조"
-  exclusive_renewal: "고시 제10조"
+  exclusive_renewal: "고시 제10조 (발명진흥법 제10조의2)"
   exclusive_renewal_private_contract: "규정 제11조 제2항 제4호"
   registration_compensation: "규정 제16조"
-  disposal_compensation: "규정 제17조, 고시 제11조"
+  disposal_compensation: "고시 제11조 제2항 (규정 제17조 제1항)"
   exclusive_competitive_bidding: "규정 제11조 제2항"
   non_exclusive_private_contract: "규정 제11조 제1항"
   free_disposal_grounds: "규정 제10조 제2항"
@@ -41,7 +48,7 @@ articles:
 unutilized_free_license:
   unutilized_years_threshold: 3        # 등록 후 미실시 기간 기준 (년)
   max_free_license_years: 3            # 무상실시 최대 기간 (년)
-  sme_renewal_base_rate_reduction_pp: 2  # 중소기업 재계약 시 실시료 기본율 인하폭 (%p) — 원문 확인 필요
+  sme_renewal_base_rate: 0.02          # 고시 제7조: 중소기업 재실시 시 실시료 산정 기본율을 2%로 낮추어 적용할 수 있음
   joint_patentee_written_consent_required: true
 
 # 전용실시 (고시·규정 기준)
@@ -49,6 +56,15 @@ exclusive_licensing:
   minimum_royalty_amount: 3000000      # 전용실시 최소실시료 (원)
   payment_deadline_days: 60            # 계약 체결일부터 납부 기한 (일)
   competitive_bidding_required: true   # 전용실시권 설정은 경쟁입찰 원칙 (규정 제11조 제2항)
+  # 규정 제11조 제2항 단서: 수의계약으로 할 수 있는 경우 (각 호)
+  private_contract_exceptions:
+    - "1. 실시에 특정인의 기술이나 설비가 필요하여 경쟁입찰을 할 수 없는 경우"
+    - "2. 공공기관의 정보공개에 관한 법률 제9조 제1항 제1호·제2호를 준용하여 국가기관의 행위를 공개하지 아니할 필요가 있는 경우"
+    - "3. 전용실시권의 설정을 받은 자에게 그 국가직무발명특허권등을 매각하는 경우"
+    - "4. 전용실시권 설정기간 만료 후 그 전용실시권자가 계속 실시할 필요가 있다고 인정되어 재계약을 하는 경우"
+    - "5. 천재지변·전시·사변 등으로 경쟁입찰을 할 여유가 없는 경우"
+    - "6. 정부가 납입자본금의 50% 이상을 출자한 공공기관의 보호·육성을 위하여 처분하는 경우 (은행 등 제외)"
+    - "7. 2회 이상 유찰되거나 낙찰자가 계약을 체결하지 아니하는 경우"
 
 # 계약 실무 기준 (기관 내부 기준 — 법정 기준 아님)
 contract_practice:
@@ -76,7 +92,13 @@ contract_practice:
 
 # 전용실시계약 갱신
 exclusive_renewal:
-  application_deadline_days_before_expiry: 30   # 만료 전 신청 기한 (일)
+  application_deadline_days_before_expiry: 30   # 고시 제10조 제4항: 만료일 기준 30일 전까지 신청
+  grounds:                                      # 고시 제10조 제1항 각 호 (어느 하나에 해당하면 갱신 가능)
+    revenue_below_investment: "1. 사업화수익이 사업화를 위해 투자한 비용보다 적은 경우"
+    followup_research_or_regulatory_tests: "2. 사업화를 위해 후속연구 또는 법령에 따른 허가·등록에 필요한 시험을 하려는 경우"
+    diplomatic_or_defense_need: "3. 외교상 또는 국방상의 이유로 계속하여 실시할 필요가 있는 경우"
+    only_licensee_can_practice: "4. 전용실시권자의 기술이나 설비가 아니면 실시하기 어려운 경우"
+    inventor_info_unavailable: "5. 발명자의 이직·퇴직으로 관련 정보 등을 전용실시권자 외의 자에게 제공할 수 없는 경우"
 
 # 등록보상금 (규정 제16조: 권리마다 지급, 같은 직무발명에는 한 번만)
 registration_compensation:
@@ -86,11 +108,11 @@ registration_compensation:
 
 # 처분보상금
 disposal_compensation:
-  payout_ratio: 0.5                    # 처분수입금(또는 순수입) 대비 보상금 비율
-  deduct_direct_expenses: true         # true: 직접비용 공제 후 순수입 기준 — 원문 확인 필요
-  deductible_items:
-    - "특허 등록 및 유지 관납료"
-    - "기술이전 중개 수수료 및 가치평가 직접비용"
+  payout_ratio: 0.5                    # 고시 제11조 제2항: 직접비용을 공제한 금액의 100분의 50
+  deduct_direct_expenses: true         # 고시 제11조 제2항: 처분수입금에서 직접비용 공제
+  deductible_items:                    # 고시 제11조 제2항 괄호 문언
+    - "지식재산권의 출원·등록에 사용한 금액"
+    - "기술을 이전하거나 사업화하기 위하여 사용한 금액 등"
 
 # 직무발명보상금 소득세
 income_tax:

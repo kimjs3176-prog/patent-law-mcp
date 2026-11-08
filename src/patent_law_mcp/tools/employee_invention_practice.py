@@ -22,6 +22,7 @@ def process_invention_disclosure(
     has_prior_publication: bool = False,
     is_within_official_duties: bool = True,
     profile: Optional[ProfileName] = None,
+    has_advance_succession_rule: bool = True,
 ) -> Dict[str, Any]:
     """직무발명 신고를 접수하고 승계 심의 안건 초안을 만듭니다 (국유특허·공공연구기관·민간 기업 프로파일).
 
@@ -32,6 +33,7 @@ def process_invention_disclosure(
         has_prior_publication: 출원 전 논문·학회 등으로 공개했는지 여부
         is_within_official_duties: 직무 범위 내 발명인지 여부
         profile: "national", "public_research", "private_company". 비우면 기본 프로파일
+        has_advance_succession_rule: (기관·기업 프로파일) 예약승계 계약 또는 근무규정이 있는지 여부
     """
     pm = policy_for(profile)
     if not inventor_names or not all(n.strip() for n in inventor_names):
@@ -59,9 +61,20 @@ def process_invention_disclosure(
             "inventors": inventor_names,
             "rnd_source": research_source,
             "novelty_risk": novelty,
+            "succession_rule": (
+                f"예약승계 규정 있음: 권리는 발명 완성 때부터 사용자에게 승계됩니다. 승계하지 않으려면 통지를 받은 날부터 "
+                f"{months}개월 이내에 발명자에게 알려야 합니다 ({art['succession_notice']} 제1항)."
+                if has_advance_succession_rule
+                else f"예약승계 규정 없음: 통지를 받은 날부터 {months}개월 이내에 승계 여부를 서면으로 알려야 하며, "
+                f"알리지 않으면 승계를 포기한 것으로 봅니다 ({art['succession_notice']} 제2항·제3항)."
+            ),
             "administrative_steps": [
-                f"1. 발명 완성 사실 통지 접수 ({art['invention_report']})",
-                f"2. 통지를 받은 날부터 {months}개월 이내에 승계 여부를 발명자에게 서면 통지 ({art['succession_notice']})",
+                f"1. 발명 완성 사실 서면 통지 접수 ({art['invention_report']})",
+                (
+                    f"2. 승계하지 않을 경우에만 {months}개월 이내 발명자에게 통지 (승계 시 별도 통지 불요)"
+                    if has_advance_succession_rule
+                    else f"2. 통지를 받은 날부터 {months}개월 이내에 승계 여부 서면 통지 (기한 경과 시 승계 포기 간주)"
+                ),
                 f"3. 승계 시 출원 진행, 보상은 {pm.metadata['notice_name']} 기준 ({art['disposal_compensation']})",
             ],
             "legal_audit_basis": pm.audit_block(),
@@ -100,7 +113,10 @@ class InventorShare(BaseModel):
     marginal_income_tax_rate: Optional[float] = Field(
         None, ge=0, le=0.45, description="재직자 세액 추정용 한계 소득세율 (예: 0.24). 없으면 근로소득 세액은 추정하지 않음"
     )
-    is_controlling_shareholder: bool = Field(False, description="지배주주 등 특수관계인 여부 (해당하면 비과세 제외)")
+    is_controlling_shareholder: bool = Field(
+        False,
+        description="사용자와 특수관계인지 여부 — 법인은 지배주주등, 개인 사용자는 친족 (해당하면 비과세 제외, 소득세법 시행령 제17조의3 제2항)",
+    )
 
 
 def calculate_disposal_compensation(
@@ -258,8 +274,6 @@ def evaluate_unutilized_free_license(
             f"민간 공동권리자가 있으므로 공동권리자의 통상실시 서면 동의서가 필요합니다 ({art['joint_patentee_consent']}). "
             "민간 지분의 실시료는 별도 협의하십시오."
         )
-    if applicant_scale in ("middle", "large"):
-        cautions.append("중견·대기업 신청이 무상실시 대상에 포함되는지는 고시 원문으로 확인하십시오.")
 
     return {
         "eligible_for_free_license": True,
@@ -271,7 +285,8 @@ def evaluate_unutilized_free_license(
         "subsequent_terms": {
             "after_free_period": f"무상 기간 종료 후 계속 실시하려면 유상 전환 ({art['free_license_paid_conversion']})",
             "sme_preferential_rate": (
-                f"중소기업 재계약 시 실시료 기본율 {rules['sme_renewal_base_rate_reduction_pp']}%p 인하 ({art['sme_renewal_rate']})"
+                f"중소기업이 무상실시 종료 후 재실시를 요청하면 실시료 산정 시 기본율을 {rules['sme_renewal_base_rate'] * 100:g}%로 "
+                f"낮추어 적용할 수 있음 ({art['sme_renewal_rate']})"
                 if applicant_scale == "sme"
                 else "일반 유상 요율 적용"
             ),
@@ -290,54 +305,73 @@ def evaluate_exclusive_renewal(
     cumulative_commercial_revenue_krw: Annotated[int, Field(ge=0)],
     cumulative_investment_krw: Annotated[int, Field(ge=0)],
     expiry_days_remaining: int,
-    ongoing_clinical_or_regulatory_tests: bool = False,
+    followup_research_or_regulatory_tests: bool = False,
+    diplomatic_or_defense_need: bool = False,
+    only_licensee_can_practice: bool = False,
+    inventor_info_unavailable: bool = False,
+    revenue_insufficient_for_period: bool = False,
+    has_commercialization_record_or_effort: bool = True,
 ) -> Dict[str, Any]:
-    """국유특허 전용실시계약의 갱신 가능성을 검토합니다.
-
-    자동 판정하는 갱신 사유는 (1) 사업화 수익이 투자 비용보다 적은 경우, (2) 인허가·등록 시험 진행 중인 경우 두 가지입니다.
-    고시의 다른 갱신 사유는 자동 판정하지 않으므로 해당하면 별도로 검토하십시오.
+    """국유특허 전용실시계약의 갱신 가능성을 고시 제10조(발명진흥법 제10조의2)에 따라 검토합니다.
 
     Args:
-        cumulative_commercial_revenue_krw: 누적 사업화 수익 (원)
-        cumulative_investment_krw: 누적 투자 비용 (원)
+        cumulative_commercial_revenue_krw: 누적 사업화수익 (원)
+        cumulative_investment_krw: 사업화를 위해 투자한 누적 비용 (원)
         expiry_days_remaining: 계약 만료까지 남은 일수 (이미 지났으면 음수)
-        ongoing_clinical_or_regulatory_tests: 인허가·등록 시험 진행 여부
+        followup_research_or_regulatory_tests: 사업화를 위한 후속연구 또는 허가·등록 시험을 하려는지 (제1항 제2호)
+        diplomatic_or_defense_need: 외교상·국방상 이유로 계속 실시할 필요가 있는지 (제3호)
+        only_licensee_can_practice: 전용실시권자의 기술·설비가 아니면 실시하기 어려운지 (제4호)
+        inventor_info_unavailable: 발명자 이직·퇴직으로 관련 정보를 다른 자에게 제공할 수 없는지 (제5호)
+        revenue_insufficient_for_period: 사업화수익이 전용실시기간에 비해 부족하다고 인정되는지 (제2항)
+        has_commercialization_record_or_effort: 사업화 실적이 있거나 사업화 노력을 계속했는지 (제3항 전제 요건)
     """
     if cumulative_commercial_revenue_krw < 0 or cumulative_investment_krw < 0:
         raise ValueError("수익과 투자 비용은 0 이상이어야 합니다.")
 
     pm = _national()
     art = pm.articles
-    deadline = pm.section("exclusive_renewal")["application_deadline_days_before_expiry"]
+    renewal = pm.section("exclusive_renewal")
+    deadline = renewal["application_deadline_days_before_expiry"]
+    labels = renewal["grounds"]
     min_royalty = pm.section("exclusive_licensing")["minimum_royalty_amount"]
 
-    grounds = []
-    if cumulative_commercial_revenue_krw < cumulative_investment_krw:
-        grounds.append(
-            f"사업화 수익({cumulative_commercial_revenue_krw:,}원)이 투자 비용({cumulative_investment_krw:,}원)보다 적음"
-        )
-    if ongoing_clinical_or_regulatory_tests:
-        grounds.append("사업화를 위한 인허가·등록 시험 진행 중")
+    checks = {
+        "revenue_below_investment": cumulative_commercial_revenue_krw < cumulative_investment_krw,
+        "followup_research_or_regulatory_tests": followup_research_or_regulatory_tests,
+        "diplomatic_or_defense_need": diplomatic_or_defense_need,
+        "only_licensee_can_practice": only_licensee_can_practice,
+        "inventor_info_unavailable": inventor_info_unavailable,
+    }
+    grounds = [labels[k] for k, met in checks.items() if met]
+    if checks["revenue_below_investment"]:
+        grounds[0] += f" — 수익 {cumulative_commercial_revenue_krw:,}원 < 투자 {cumulative_investment_krw:,}원"
 
     on_time = expiry_days_remaining >= deadline
-    if not on_time:
-        assessment = "신청 기한 경과"
+    if not has_commercialization_record_or_effort:
+        assessment = "갱신 불가 — 사업화 실적이나 계속된 사업화 노력이 있어야 합니다 (제10조 제3항)"
+    elif not on_time:
+        assessment = "신청 기한 경과 (제10조 제4항)"
     elif grounds:
-        assessment = "자동 판정 사유 충족"
+        assessment = "갱신 사유 충족 (제10조 제1항)"
+    elif revenue_insufficient_for_period:
+        assessment = "제1항 사유는 없으나 사업화수익이 기간에 비해 부족 — 발명기관·수탁기관 협의 후 갱신 허락 가능 (제10조 제2항)"
     else:
-        assessment = "자동 판정 사유 미충족 — 고시의 다른 갱신 사유 해당 여부 검토 필요"
+        assessment = "갱신 사유 없음 (제10조 제1항 각 호에 해당하지 않음)"
 
     return {
         "assessment": assessment,
         "regulatory_basis": f"{art['exclusive_renewal']} (전용실시계약의 갱신)",
         "verified_renewal_grounds": grounds,
-        "unchecked_grounds_note": "수익·투자 비교와 인허가 시험 외의 갱신 사유는 자동 판정하지 않습니다.",
+        "all_grounds": list(labels.values()),
         "application_deadline_status": (
-            f"기한 내 (만료 {expiry_days_remaining}일 전, 기준: {deadline}일 전까지 신청)"
+            f"기한 내 (만료 {expiry_days_remaining}일 전, 기준: 만료일 기준 {deadline}일 전까지 신청)"
             if on_time
-            else f"기한 경과 (만료 {expiry_days_remaining}일 전, 기준: {deadline}일 전까지 신청)"
+            else f"기한 경과 (만료 {expiry_days_remaining}일 전, 기준: 만료일 기준 {deadline}일 전까지 신청)"
         ),
         "contract_method": f"갱신 재계약은 경쟁입찰 예외로 수의계약 가능 ({art['exclusive_renewal_private_contract']})",
-        "financial_conditions": f"갱신 시에도 전용실시 최소실시료({min_royalty:,}원 이상) 기준 적용 ({art['exclusive_minimum_royalty']})",
+        "financial_conditions": (
+            f"갱신 시에도 최소실시료({min_royalty:,}원 이상, {art['exclusive_minimum_royalty']} 제2항) 적용. "
+            "최소실시료·전용실시기간 등은 협의하여 기존 계약과 달리 정할 수 있음 (제10조 제5항)"
+        ),
         "legal_audit_basis": pm.audit_block(),
     }

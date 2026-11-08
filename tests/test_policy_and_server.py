@@ -107,9 +107,13 @@ def test_non_national_contract_has_no_minimum_royalty_or_bidding():
     assert not any("최소실시료" in c["item"] for c in review["checklist"])
 
 
-def test_institution_disclosure_uses_succession_deadline():
-    r = process_invention_disclosure("발명", ["A"], profile="private_company")
-    assert any("4개월" in step for step in r["administrative_steps"])
+def test_institution_disclosure_follows_amended_succession_rule():
+    # 발명진흥법 제13조(2024.2.6. 개정): 예약승계 규정이 있으면 자동 승계, 승계하지 않을 때만 4개월 내 통지
+    auto = process_invention_disclosure("발명", ["A"], profile="private_company")
+    assert "발명 완성 때부터 사용자에게 승계" in auto["succession_rule"]
+    assert any("승계하지 않을 경우에만 4개월" in step for step in auto["administrative_steps"])
+    manual = process_invention_disclosure("발명", ["A"], profile="public_research", has_advance_succession_rule=False)
+    assert "승계를 포기한 것으로 봅니다" in manual["succession_rule"]
 
 
 def test_env_profile_switch_keeps_national_only_tools_national(monkeypatch):
