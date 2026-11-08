@@ -1,24 +1,25 @@
-# Patent MCP (`patent-law-mcp`)
+# Patent Law MCP (`patent-law-mcp`)
 
-특허 분석, 특허 추천 및 **특허실무(기술실시계약, 국가직무발명 처분·보상, 청구항 FTO 분석)**에 고도로 특화된 Model Context Protocol (MCP) 서버입니다.
+**지식재산처 최신 국유특허권 처분관리 업무편람** 및 **국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령(지식재산처고시 제2025-4호)**을 완벽히 반영한 특허실무 전문 Model Context Protocol (MCP) 서버입니다.
 
-단순한 일반 법령 조문 검색을 넘어, 현직 변리사 및 기술거래기관 실무자가 실제로 수행하는 계약 조항 검토, 기술료율 산출, 직무발명 심의, 청구항 구성요소 대비표 작성 등의 전문 실무 파이프라인을 AI 에이전트(Claude Desktop, Cursor, Claude Code 등)에 제공합니다.
+`patent-summary-wizard`(Agri IP Summary · atipsum)의 실무 분석 로직과 최신 지식재산처 행정규칙을 결합하여, AI 에이전트(Claude Desktop, Cursor, Claude Code 등)가 실제 국가직무발명 심의, 국유특허 기술실시계약, FTO 권리범위 분석, 처분보상금 산정 업무를 정확하게 지원합니다.
 
 ---
 
-## 🛠️ 특허실무 전문 도구 세트 (Practice Tools)
+## 🛠️ 지식재산처 최신 업무편람 특화 도구 세트
 
-### 1. 기술실시계약 실무 (`tools/contract_practice.py`)
-- **`design_licensing_terms`**: 전용실시/통상실시 계약 표준 조건 설계 (기업 규모별 선급·경상기술료율, 불실시 해지특약, 재실시권 제한, 감사 대비 장부열람권 명시)
-- **`review_licensing_contract`**: 기술실시계약서 초안의 독소 조항 점검, 필수 공공특허 면책 조항 누락 및 사후 감사 리스크 체크리스트
+### 1. 직무발명 및 국유특허 처분 실무 (`tools/employee_invention_practice.py`)
+- **`process_invention_disclosure`**: 직무발명 신고 접수 및 직무범위성 심의 안건 작성 (지식재산처 업무편람 표준 서식)
+- **`calculate_disposal_compensation`**: 지식재산처 고시 제11조에 따라 직접비용(출원·등록·기술이전 비용) 공제 후 **순수입금의 50% 처분보상금 산출 및 지분별 지급 명세서** 작성
+- **`evaluate_unutilized_free_license`**: 등록 후 3년 미실시 국유특허의 **최대 3년 무상 통상실시(고시 제3조)** 및 중소기업 재계약 시 **실시료 기본율 2% 인하 우대요율(고시 제7조)** 심의
+- **`evaluate_exclusive_renewal`**: 국유특허 전용실시계약의 **법정 5대 갱신 사유(투자금 미회수, 인허가 시험 등) 및 만료 30일 전 신청 요건(고시 제10조)** 심의
 
-### 2. 직무발명 및 국유특허 처분 실무 (`tools/employee_invention_practice.py`)
-- **`process_invention_disclosure`**: 직무발명 신고 접수 및 직무범위성 판정, 기관 심의위원회 상정 안건 작성
-- **`calculate_disposal_compensation`**: 국유특허 기술료 입금에 따른 발명자 처분보상금(순수입 50%) 산출 및 지분율별 지급 명세서 작성
-- **`evaluate_free_license_qualification`**: 국유특허 무상실시(농업인·청년농·소상공인 대상 기술료 전액 면제) 적격성 심의
+### 2. 기술실시계약 실무 (`tools/contract_practice.py`)
+- **`design_licensing_terms`**: 지식재산처 고시 제9조에 따른 **전용실시 최소실시료(300만 원 이상 / 계약일로부터 60일 이내 납부)** 의무 및 기업 규모별 선급·경상기술료율, 불실시 해지특약 설계
+- **`review_licensing_contract`**: 기술실시계약서 초안의 지식재산처 승인 요건 및 감사원 감사 대비 필수 특약(장부실사권, 불실시 해약권 등) 점검
 
 ### 3. 청구항 권리범위 및 FTO/회피설계 실무 (`tools/claims_practice.py`)
-- **`analyze_claim_elements_chart`**: 청구항 1항 구성요소 완비의 법칙(All Elements Rule) 분해 및 목표 제품과의 요소별 대비표(Element-by-Element Chart) 작성
+- **`analyze_claim_elements_chart`**: 독립항 구성요소 완비의 법칙(All Elements Rule) 분해 및 목표 제품과의 요소별 대비표(Element-by-Element Chart) 작성
 - **`evaluate_workaround_points`**: 청구항 구성요소 기준 침해 회피설계 전략(완전 생략, 실질적 메커니즘 치환, 공지기술 항변)
 
 ### 4. 특허 분석 및 그라운딩 실무 (`tools/analysis.py`)
@@ -32,20 +33,18 @@
 
 ---
 
-## 🔄 연계 워크플로 예시 (Chained Practice Workflow)
+## 📚 적용 행정규칙 및 법령 체계
 
-1. **특허 발굴**: `find_patents_by_business_need`로 기업 애로사항에 맞는 국유특허 발굴
-2. **기술·권리 진단**: `summarize_patent`로 기술 요약 확인 후 `analyze_claim_elements_chart`로 제품과의 권리범위 침해/저촉 여부 검토
-3. **계약조건 설계**: `design_licensing_terms`로 기업 규모에 맞는 전용/통상실시 선급·경상기술료율 및 필수 특약 조항 산출
-4. **계약서 검토**: `review_licensing_contract`로 감사 대비 리스크 및 독소 조항 사전 점검
-5. **사후 보상**: 계약 체결 후 `calculate_disposal_compensation`으로 발명자 처분보상금 지급 품의서 작성
+- **지식재산처고시 제2025-4호**: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령 (시행 2025. 10. 30.)
+- **대통령령**: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정
+- **법률**: 발명진흥법, 기술의 이전 및 사업화 촉진에 관한 법률, 특허법
 
 ---
 
 ## 🚀 빠른 시작 (`uv` 기반)
 
 ```bash
-cd patent-law-mcp
+cd patent-mcp
 uv sync
 uv run patent-law-mcp
 ```
