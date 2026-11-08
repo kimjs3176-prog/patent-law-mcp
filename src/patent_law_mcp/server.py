@@ -1,7 +1,11 @@
 """Patent Law MCP 메인 서버 (FastMCP 기반)
 
-지식재산처 최신 국유특허권 처분관리 업무편람 및
-국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령(지식재산처고시 제2025-4호) 반영
+공공·국유 특허 기술이전 실무 및 지식재산처 최신 업무편람·고시(제2025-4호) 특화
+
+[면책 조항]
+본 MCP 서버는 변리사의 출원·심사 대리 업무를 대신하지 않으며,
+공공연구기관 및 국가직무발명의 기술이전 계약 실무, 처분·보상 행정 절차,
+도입 기업 제품과의 권리범위 매칭 검토를 보조하기 위한 전문 실무 도구입니다.
 """
 
 from mcp.server.fastmcp import FastMCP
@@ -18,8 +22,7 @@ from patent_law_mcp.tools.employee_invention_practice import (
     evaluate_exclusive_renewal,
 )
 from patent_law_mcp.tools.claims_practice import (
-    analyze_claim_elements_chart,
-    evaluate_workaround_points,
+    verify_tech_transfer_scope_match,
 )
 from patent_law_mcp.tools.analysis import (
     summarize_patent,
@@ -34,13 +37,16 @@ from patent_law_mcp.tools.recommendation import (
 # FastMCP 서버 생성
 mcp = FastMCP(
     name="patent-law-mcp",
-    description="지식재산처 업무편람 및 고시(제2025-4호) 기반 특허실무·기술이전 전문 MCP 서버",
+    description=(
+        "공공·국유 특허 기술이전 계약 및 지식재산처 업무편람(고시 제2025-4호) 특화 기술거래 실무 MCP 서버. "
+        "(출원·심사 대리가 아닌 기술이전·처분 실무 보조 도구)"
+    ),
 )
 
 # 1. 기술실시계약 실무 도구 등록
 mcp.tool(
     name="design_licensing_terms",
-    description="지식재산처 고시 기준 최소실시료(300만원/60일 이내) 및 전용/통상실시 계약조건 산출",
+    description="지식재산처 고시 기준 전용실시 최소실시료(300만원/60일 이내) 및 전용/통상실시 계약조건 산출",
 )(design_licensing_terms)
 
 mcp.tool(
@@ -48,7 +54,7 @@ mcp.tool(
     description="기술실시계약서 초안 조항 검토 및 지식재산처 승인·사후 감사 리스크 체크리스트 점검",
 )(review_licensing_contract)
 
-# 2. 직무발명 및 국유특허 처분 실무 도구 등록 (지식재산처 최신 고시 반영)
+# 2. 직무발명 및 국유특허 처분 실무 도구 등록
 mcp.tool(
     name="process_invention_disclosure",
     description="직무발명 신고 접수 및 직무범위성 심의위원회 상정 안건 작성 (지식재산처 업무편람 서식)",
@@ -56,7 +62,7 @@ mcp.tool(
 
 mcp.tool(
     name="calculate_disposal_compensation",
-    description="지식재산처 고시 제11조에 따른 직접비용 공제 후 순수입 50% 처분보상금 산출 및 지급 명세표 작성",
+    description="지식재산처 고시 제11조에 따른 직접비용 공제 후 순수입 50% 처분보상금 산출 및 세액 명세표 작성",
 )(calculate_disposal_compensation)
 
 mcp.tool(
@@ -69,21 +75,16 @@ mcp.tool(
     description="국유특허 전용실시계약의 5대 법정 갱신 사유(투자금 미회수 등) 및 만료 30일 전 신청 요건 심의 (고시 제10조)",
 )(evaluate_exclusive_renewal)
 
-# 3. 청구항 및 FTO/회피설계 실무 도구 등록
+# 3. 기술이전 권리범위 매칭 실무 도구 등록 (출원·회피설계 배제)
 mcp.tool(
-    name="analyze_claim_elements_chart",
-    description="청구항 1항 구성요소 분해 및 목표 제품과의 요소별 대비표(Element-by-Element Chart) 작성",
-)(analyze_claim_elements_chart)
+    name="verify_tech_transfer_scope_match",
+    description="기술이전 계약 체결 전, 도입 희망 기업 제품과 특허 청구항 권리범위 매칭 및 실시권 필요성 검토",
+)(verify_tech_transfer_scope_match)
 
-mcp.tool(
-    name="evaluate_workaround_points",
-    description="청구항 구성요소 기준 침해 회피설계(생략·치환·공지기술 항변) 전략 제시",
-)(evaluate_workaround_points)
-
-# 4. 특허 분석 실무 도구 등록
+# 4. 특허 분석 실무 도구 등록 (atipsum 기반)
 mcp.tool(
     name="summarize_patent",
-    description="특허 원문 근거 요약서 생성 및 AI 환각 수치 그라운딩 보정 (atipsum 실무 로직)",
+    description="특허 원문 근거 기술 요약서 생성 및 AI 환각 수치 그라운딩 보정 (기술이전 상담용)",
 )(summarize_patent)
 
 mcp.tool(
