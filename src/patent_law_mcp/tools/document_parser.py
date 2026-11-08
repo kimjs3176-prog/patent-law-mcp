@@ -16,64 +16,62 @@ from patent_law_mcp.tools.bundling_and_targeting import find_target_licensees_by
 DATA_DIR = Path(__file__).parent.parent / "data"
 BUNDLED_FILE = DATA_DIR / "bundled_patents.json"
 
+KEY_ALIASES = {
+    "sorting_machine": "sorting_machine",
+    "선별기": "sorting_machine",
+    "과채류": "sorting_machine",
+    "non_hardening_rice_cake": "non_hardening_rice_cake",
+    "rice_cake": "non_hardening_rice_cake",
+    "굳지않는떡": "non_hardening_rice_cake",
+    "떡": "non_hardening_rice_cake",
+    "black_rice_extract": "black_rice_extract",
+    "흑미": "black_rice_extract",
+    "smart_greenhouse": "smart_greenhouse",
+    "온실": "smart_greenhouse",
+    "스마트팜": "smart_greenhouse",
+}
+
 
 def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
-    """공보 텍스트나 웹 화면 복사본에서 표준 특허 식별자 기호(KIPO/WIPO 표준)를 감지하여 자동 파싱합니다.
-
-    감지 대상:
-    - (54) 발명의 명칭 / 【발명의 명칭】
-    - (21) 출원번호 / 【출원번호】
-    - (11) 등록번호 / 【등록번호】
-    - (71) 출원인 / (73) 특허권자 / 【출원인】
-    - (51) IPC 분류 / 【국제특허분류】
-    - 【요약】 / 【과제의 해결 수단】
-    - 【특허청구범위】 / 【청구항 N】
-    """
+    """공보 텍스트나 웹 화면 복사본에서 표준 특허 식별자 기호(KIPO/WIPO 표준)를 감지하여 자동 파싱합니다."""
     clean = raw_text.strip()
 
-    # 1. 발명의 명칭 추출
     title_match = re.search(
         r"(?:【발명의\s*명칭】|\(54\)\s*발명의\s*명칭|발명의\s*명칭)\s*[:：]?\s*([^\n\r]+)",
         clean,
     )
     title = title_match.group(1).strip().lstrip(":：").strip() if title_match else ""
 
-    # 2. 출원번호 추출
     appno_match = re.search(
         r"(?:【출원번호】|\(21\)\s*출원번호|출원번호)\s*[:：]?\s*([0-9\-\s]+)",
         clean,
     )
     application_number = re.sub(r"\s+", "", appno_match.group(1).strip()) if appno_match else ""
 
-    # 3. 등록번호 추출
     regno_match = re.search(
         r"(?:【등록번호】|\(11\)\s*등록번호|등록번호)\s*[:：]?\s*([0-9\-\s]+)",
         clean,
     )
     register_number = re.sub(r"\s+", "", regno_match.group(1).strip()) if regno_match else ""
 
-    # 4. 출원인 / 특허권자 추출
     applicant_match = re.search(
         r"(?:【출원인】|\(71\)\s*출원인|\(73\)\s*특허권자|특허권자|출원인)\s*[:：]?\s*([^\n\r]+)",
         clean,
     )
     applicant = applicant_match.group(1).strip().lstrip(":：").strip() if applicant_match else "농촌진흥청/국가"
 
-    # 5. IPC 분류 추출
     ipc_match = re.search(
         r"(?:【국제특허분류\(IPC\)】|\(51\)\s*Int\.\s*Cl\.|IPC)\s*[:：]?\s*([A-H][0-9]{2}[A-Z]?\s*[0-9\/]*)",
         clean,
     )
     ipc_code = ipc_match.group(1).strip().lstrip(":：").strip() if ipc_match else "A01G"
 
-    # 6. 요약(Abstract) 추출
     abstract_match = re.search(
         r"(?:【요약】|\[요약\]|\(57\)\s*요약)\s*([\s\S]*?)(?=(?:【청구항|【특허청구범위】|【명세서】|【도면|【대표도】|\Z))",
         clean,
     )
     abstract = abstract_match.group(1).strip() if abstract_match else ""
 
-    # 7. 청구항(Claims) 분해
     claims = []
     claims_section_match = re.search(
         r"(?:【특허청구범위】|【청구범위】)\s*([\s\S]*?)(?=(?:【도면의\s*간단한\s*설명】|【발명의\s*설명】|【명세서】|\Z))",
@@ -84,10 +82,9 @@ def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
     claim_splits = re.split(r"(?:【청구항\s*\d+】|청구항\s*\d+\s*[\.\:：])", claims_text)
     for c in claim_splits:
         c_clean = c.strip()
-        if len(c_clean) > 15:  # 유의미한 청구항 텍스트만 수집
+        if len(c_clean) > 15:
             claims.append(c_clean)
 
-    # 기본 폴백: 명칭이나 요약이 정규식으로 안 잡혔을 때의 휴리스틱
     if not title:
         first_line = clean.split("\n")[0].strip()
         title = first_line[:60] if first_line else "특허 기술 분석 대상"
@@ -114,10 +111,11 @@ def parse_raw_patent_text(raw_text: str) -> Dict[str, Any]:
 def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, Any]:
     """내장된 KOAT·농진청 핵심 국유특허 샘플 데이터를 즉시 로드합니다. (완전 오프라인)
 
-    사용 가능한 sample_key:
-    - 'sorting_machine': 과채류 비파괴 당도 선별 장치 (장치 특허)
-    - 'black_rice_extract': 흑미 유래 안토시아닌 C3G 추출방법 (공정·소재 특허)
-    - 'smart_greenhouse': 밀폐형 온실 복합 환경제어 스마트팜 (복합 시스템 특허)
+    사용 가능한 sample_key 또는 키워드:
+    - 'non_hardening_rice_cake' (또는 '굳지않는떡', '떡'): 농진청 대표 굳지 않는 떡 제조기술 (식품 특허)
+    - 'sorting_machine' (또는 '선별기'): 과채류 비파괴 당도 선별 장치 (장치 특허)
+    - 'black_rice_extract' (또는 '흑미'): 흑미 유래 안토시아닌 C3G 추출방법 (공정·소재 특허)
+    - 'smart_greenhouse' (또는 '온실', '스마트팜'): 밀폐형 온실 복합 환경제어 시스템 (복합 시스템 특허)
     """
     if not BUNDLED_FILE.exists():
         return {"error": "내장 특허 데이터셋 파일을 찾을 수 없습니다."}
@@ -125,7 +123,10 @@ def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, 
     with open(BUNDLED_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    return data.get(sample_key, data.get("sorting_machine", {}))
+    clean_key = sample_key.strip().lower()
+    canonical_key = KEY_ALIASES.get(clean_key, sample_key)
+
+    return data.get(canonical_key, data.get("non_hardening_rice_cake" if "떡" in clean_key else "sorting_machine", {}))
 
 
 def analyze_patent_document(
@@ -145,7 +146,6 @@ def analyze_patent_document(
     ipc = parsed["ipc_code"]
     p_id = parsed["register_number"] if parsed["register_number"] != "미기재" else parsed["application_number"]
 
-    # 1. 특허 요약 및 시그니처 분해
     summary = summarize_patent(
         patent_id=p_id,
         title=title,
@@ -154,14 +154,12 @@ def analyze_patent_document(
         applicant=applicant,
     )
 
-    # 2. 사업화 TRL 진단
     trl = evaluate_commercialization(
         technology_domain=summary["technology_type"],
         claims_count=len(claims),
         has_experimental_data=True,
     )
 
-    # 3. 수요기업 역매칭 (Targeting)
     targeting = find_target_licensees_by_patent(
         technology_title=title,
         ipc_code=ipc,
