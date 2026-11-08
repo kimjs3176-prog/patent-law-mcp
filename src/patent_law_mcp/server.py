@@ -10,7 +10,7 @@
 
 from mcp.server.fastmcp import FastMCP
 
-# 도구 모듈 임포트
+# 기존 도구 모듈 임포트
 from patent_law_mcp.tools.contract_practice import (
     design_licensing_terms,
     review_licensing_contract,
@@ -32,6 +32,16 @@ from patent_law_mcp.tools.recommendation import (
     find_patents_by_business_need,
     recommend_similar_patents,
     recommend_free_transfer_patents,
+)
+
+# 신규 고도화 도구 모듈 임포트 (1번: KIPRISPlus 실시간 연동, 4번: 패키징 & 수요기업 역매칭)
+from patent_law_mcp.tools.kipris_connector import (
+    fetch_patent_from_kipris,
+    inspect_and_summarize_by_appno,
+)
+from patent_law_mcp.tools.bundling_and_targeting import (
+    bundle_patents_for_transfer,
+    find_target_licensees_by_patent,
 )
 
 # FastMCP 서버 생성
@@ -75,16 +85,16 @@ mcp.tool(
     description="국유특허 전용실시계약의 5대 법정 갱신 사유(투자금 미회수 등) 및 만료 30일 전 신청 요건 심의 (고시 제10조)",
 )(evaluate_exclusive_renewal)
 
-# 3. 기술이전 권리범위 매칭 실무 도구 등록 (출원·회피설계 배제)
+# 3. 기술이전 권리범위 매칭 실무 도구 등록
 mcp.tool(
     name="verify_tech_transfer_scope_match",
     description="기술이전 계약 체결 전, 도입 희망 기업 제품과 특허 청구항 권리범위 매칭 및 실시권 필요성 검토",
 )(verify_tech_transfer_scope_match)
 
-# 4. 특허 분석 실무 도구 등록 (atipsum 기반)
+# 4. 특허 분석 실무 도구 등록
 mcp.tool(
     name="summarize_patent",
-    description="특허 원문 근거 기술 요약서 생성 및 AI 환각 수치 그라운딩 보정 (기술이전 상담용)",
+    description="특허 원문 근거 기술 요약서 생성 및 AI 환각 수치 그라운딩 보정, 60초 브리핑 피치 대본 생성",
 )(summarize_patent)
 
 mcp.tool(
@@ -107,6 +117,28 @@ mcp.tool(
     name="recommend_free_transfer_patents",
     description="중소기업 및 농업인 대상 무상기술이전(나눔특허, 국유특허 무상실시) 추천",
 )(recommend_free_transfer_patents)
+
+# 6. [신규 고도화 1번] KIPRISPlus 실시간 연동 도구
+mcp.tool(
+    name="fetch_patent_from_kipris",
+    description="13자리 출원번호 입력으로 KIPRIS Plus 실시간 Open API 서지사항, 권리상태, 등록청구항 조회",
+)(fetch_patent_from_kipris)
+
+mcp.tool(
+    name="inspect_and_summarize_by_appno",
+    description="출원번호 하나로 KIPRIS 조회부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
+)(inspect_and_summarize_by_appno)
+
+# 7. [신규 고도화 4번] 특허 패키징(Bundling) 및 수요기업 역매칭(Targeting) 도구
+mcp.tool(
+    name="bundle_patents_for_transfer",
+    description="원천·공정·장치 특허를 묶어 회피설계를 방지하고 일괄 감면율을 적용하는 기술이전 패키지 제안서 구성",
+)(bundle_patents_for_transfer)
+
+mcp.tool(
+    name="find_target_licensees_by_patent",
+    description="특허 IPC 및 제품 분야 기반 표준산업분류(KSIC) 매칭, 유력 수요기업군(양산/스타트업) 타겟팅 전략 도출",
+)(find_target_licensees_by_patent)
 
 
 def main():

@@ -2,17 +2,25 @@
 
 **공공·국유 특허 기술이전 실무** 및 **지식재산처 최신 국유특허 처분관리 업무편람(지식재산처고시 제2025-4호)**에 특화된 기술거래·계약 실무 전용 Model Context Protocol (MCP) 서버입니다.
 
-`patent-summary-wizard`(Agri IP Summary · atipsum 요약서)와 `patent-video-skill`(특허 기술소개영상 시그니처 분석)의 검증된 실무 파이프라인을 결합하여, AI 에이전트가 기술이전 상담과 바이어 브리핑에 즉시 활용할 수 있는 고도화된 특허 분석·요약을 제공합니다.
+`patent-summary-wizard`(Agri IP Summary · atipsum 요약서)와 `patent-video-skill`(특허 기술소개영상 시그니처 분석)의 검증된 실무 파이프라인을 결합하여, **KIPRISPlus 실시간 연동 원스톱 분석**부터 **특허 패키징(Bundling) 및 수요기업 역매칭(Targeting)**까지 지원합니다.
 
 > ⚖️ **실무 포지셔닝 및 면책 (Disclaimer)**  
 > 본 MCP 서버는 **변리사의 특허 출원 대리, 명세서 작성, 심사/거절이유(OA) 대응 업무를 대체하지 않습니다.**  
-> 공공연구기관 및 국가직무발명의 **기술이전 계약조건 설계, 감사 대비 계약서 검토, 국유특허 처분·보상 행정 절차, 도입 기업 제품과 권리범위 매칭 확인**을 지원하는 기술거래기관/연구기관 실무 보조 도구입니다.
+> 공공연구기관 및 국가직무발명의 **기술이전 계약조건 설계, 감사 대비 계약서 검토, 국유특허 처분·보상 행정 절차, 도입 기업 제품과 권리범위 매칭 확인, 기술 패키징 및 타겟 바이어 매칭**을 지원하는 기술거래기관/연구기관 실무 전문 도구입니다.
 
 ---
 
 ## 🛠️ 실무 도구 구성 (Practice Tools)
 
-### 1. 특허 요약 및 기술 분석 실무 (`tools/analysis.py` - 고도화 완료)
+### 1. 📡 KIPRISPlus 실시간 연동 & 원스톱 분석 (`tools/kipris_connector.py` - 신규)
+- **`fetch_patent_from_kipris`**: 13자리 출원번호 입력만으로 KIPRIS Plus 실시간 Open API를 호출해 서지사항, 권리상태, 등록청구항, 초록 파싱
+- **`inspect_and_summarize_by_appno`**: **출원번호 한 줄**로 KIPRIS 조회 ➔ 원문 요약 ➔ 스펙 칩 발췌 ➔ TRL 진단 ➔ 60초 브리핑 피치 대본까지 원스톱 실행
+
+### 2. 🎯 특허 패키징(Bundling) & 수요기업 역매칭(Targeting) (`tools/bundling_and_targeting.py` - 신규)
+- **`bundle_patents_for_transfer`**: 원천특허(Core) + 제조공정특허(Process) + 응용장치특허(Apparatus)를 1개의 강력한 포트폴리오로 묶어 회피설계를 방지하고 일괄 감면율(20~25%)을 적용하는 기술이전 패키지 제안서 자동 구성
+- **`find_target_licensees_by_patent`**: 특허의 IPC 및 타겟 제품을 기반으로 한국표준산업분류(KSIC) 매칭, 기업 규모별(양산 제조 중소기업, 애그테크 스타트업, 플랫폼 PB 파트너) 바이어 페르소나 및 라이선싱 어프로치 전략 도출
+
+### 3. 특허 요약 및 기술 분석 실무 (`tools/analysis.py` - 고도화)
 - **`summarize_patent`**:
   - **기술 유형 자동 판별**: 장치/시스템, 공정/제조방법, 바이오/조성물 자동 분류
   - **시그니처 구조화 (`patent-video-skill` 연계)**: 청구항 1항 기준 공정 단계(`steps`) 또는 핵심 부품(`parts`) 계층 분해
@@ -21,20 +29,20 @@
   - **60초 기술거래 브리핑 피치**: 바이어 상담 및 기술소개영상 나레이션용 3문장 개조식 스피치 스크립트 생성
 - **`evaluate_commercialization`**: 기술 성숙도(TRL 1~9단계) 및 시장 사업화 진입 장벽 진단
 
-### 2. 기술실시계약 실무 (`tools/contract_practice.py`)
+### 4. 기술실시계약 실무 (`tools/contract_practice.py`)
 - **`design_licensing_terms`**: 지식재산처 고시 제9조에 따른 **전용실시 최소실시료(300만 원 이상 / 60일 이내 납부)** 의무 및 기업 규모별 선급·경상기술료율, 불실시 해지특약 설계
 - **`review_licensing_contract`**: 기술실시계약서 초안의 지식재산처 승인 요건 및 감사원 감사 대비 필수 특약(장부실사권, 불실시 해약권 등) 점검
 
-### 3. 직무발명 및 국유특허 처분 실무 (`tools/employee_invention_practice.py`)
+### 5. 직무발명 및 국유특허 처분 실무 (`tools/employee_invention_practice.py`)
 - **`process_invention_disclosure`**: 직무발명 신고 접수 및 직무범위성 심의 안건 작성 (지식재산처 업무편람 표준 서식)
 - **`calculate_disposal_compensation`**: 지식재산처 고시 제11조에 따라 직접비용 공제 후 **순수입금의 50% 처분보상금 산출 및 소득세법상 비과세 한도(연 700만 원) 반영 지급 명세서** 작성
 - **`evaluate_unutilized_free_license`**: 등록 후 3년 미실시 국유특허의 **최대 3년 무상 통상실시(고시 제3조)**, 공동권리자 동의서 체크 및 중소기업 재계약 시 **실시료 기본율 2% 인하 우대(고시 제7조)** 심의
 - **`evaluate_exclusive_renewal`**: 국유특허 전용실시계약의 **법정 5대 갱신 사유(투자금 미회수, 인허가 시험 등) 및 만료 30일 전 신청 요건(고시 제10조)** 심의
 
-### 4. 기술이전 권리범위 매칭 실무 (`tools/claims_practice.py`)
+### 6. 기술이전 권리범위 매칭 실무 (`tools/claims_practice.py`)
 - **`verify_tech_transfer_scope_match`**: 기술실시계약 체결 전, **도입 희망 기업 제품이 특허 청구항 필수 구성을 실제로 실시하는지(All Elements Rule) 대조**하여 실시계약 체결 필요성을 객관적으로 판정
 
-### 5. 특허 추천 실무 (`tools/recommendation.py`)
+### 7. 특허 추천 실무 (`tools/recommendation.py`)
 - **`find_patents_by_business_need`**: 기업 주력 품목 및 도입 목적(신제품, 원가절감 등)에 맞는 국유/공공특허 매칭 추천
 - **`recommend_similar_patents`**: 기준 특허와 기술적·기능적으로 유사한 특허 후보 추천
 - **`recommend_free_transfer_patents`**: 중소기업 및 농업인 대상 무상기술이전(나눔특허, 국유특허) 추천
