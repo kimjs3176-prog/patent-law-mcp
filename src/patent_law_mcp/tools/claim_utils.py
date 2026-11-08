@@ -60,7 +60,7 @@ def split_claim_elements(claim: str) -> Tuple[List[str], str]:
     parts = []
     for p in re.split(r"[;；]", body):
         p = re.sub(r"^(?:및|또는)\s+", "", p.strip(" ,"))
-        if len(p) >= 4:
+        if len(p) >= 2:
             parts.append(p)
     return parts, subject
 

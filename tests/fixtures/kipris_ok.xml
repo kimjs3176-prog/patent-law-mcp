@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response><header><successYN>Y</successYN><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+<body><item>
+<biblioSummaryInfoArray><biblioSummaryInfo>
+<applicationDate>2008.11.28</applicationDate><applicationNumber>1020080119257</applicationNumber>
+<inventionTitle>유기성 슬러지의 고정상식 건조장치</inventionTitle>
+<openNumber>1020100060603</openNumber><registerDate>2011.10.06</registerDate>
+<registerNumber>1010702810000</registerNumber><registerStatus>등록</registerStatus>
+</biblioSummaryInfo></biblioSummaryInfoArray>
+<ipcInfoArray><ipcInfo><ipcNumber>C02F 11/12</ipcNumber></ipcInfo><ipcInfo><ipcNumber>F26B 17/12</ipcNumber></ipcInfo></ipcInfoArray>
+<abstractInfoArray><abstractInfo><astrtCont>유기성 슬러지를 건조하는 장치에 관한 것이다.</astrtCont></abstractInfo></abstractInfoArray>
+<claimInfoArray><claimInfo><claim>건조부; 및 열풍주입부;를 포함하는 건조장치.</claim></claimInfo><claimInfo><claim>제1항에 있어서, 배출구를 갖는 건조장치.</claim></claimInfo></claimInfoArray>
+<applicantInfoArray><applicantInfo><name>주식회사 포스코건설</name></applicantInfo></applicantInfoArray>
+<inventorInfoArray><inventorInfo><name>정현태</name></inventorInfo></inventorInfoArray>
+</item></body></response>
