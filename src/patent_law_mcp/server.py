@@ -36,7 +36,7 @@ from patent_law_mcp.tools.recommendation import (
 
 # 신규 고도화 도구 모듈 임포트
 from patent_law_mcp.tools.kipris_connector import (
-    fetch_patent_from_kipris,
+    fetch_patent_smart,
     inspect_and_summarize_by_appno,
 )
 from patent_law_mcp.tools.bundling_and_targeting import (
@@ -52,13 +52,13 @@ from patent_law_mcp.tools.document_parser import (
 # FastMCP 서버 생성
 mcp = FastMCP(
     name="patent-law-mcp",
-    description=(
+    instructions=(
         "공공·국유 특허 기술이전 계약 및 지식재산처 업무편람(고시 제2025-4호) 특화 기술거래 실무 MCP 서버. "
         "(출원·심사 대리가 아닌 기술이전·처분 실무 보조 도구)"
     ),
 )
 
-# 0. Zero-API 공보 텍스트 스마트 파서 및 종합 분석 도구 (API 키 불필요)
+# 0. Zero-API 공보 텍스트 스마트 파서 및 종합 분석 도구 (복사·붙여넣기 지원)
 mcp.tool(
     name="analyze_patent_document",
     description="복사한 공보 텍스트에서 요약서, 스펙 칩, TRL 진단, 60초 바이어 피치, 수요기업 타겟팅까지 원스톱 실행 (Zero-API)",
@@ -150,15 +150,15 @@ mcp.tool(
     description="특허 IPC 및 제품 분야 기반 표준산업분류(KSIC) 매칭, 유력 수요기업군(양산/스타트업) 타겟팅 전략 도출",
 )(find_target_licensees_by_patent)
 
-# 7. KIPRISPlus 연동 도구 (선택적)
+# 7. 하이브리드 특허 원문 자동 수집 도구 (출원번호 1줄로 수집: Zero-API 웹 크롤링 <-> KIPRIS 키 전환)
 mcp.tool(
-    name="fetch_patent_from_kipris",
-    description="13자리 출원번호 입력으로 KIPRIS Plus 실시간 Open API 서지사항, 권리상태, 등록청구항 조회",
-)(fetch_patent_from_kipris)
+    name="fetch_patent_smart",
+    description="출원/등록번호로 자동 수집 (평소엔 구글특허 공개웹 크롤링, KIPRIS 키 제공 시 KIPRIS 공식 API로 자동 전환)",
+)(fetch_patent_smart)
 
 mcp.tool(
     name="inspect_and_summarize_by_appno",
-    description="출원번호 하나로 KIPRIS 조회부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
+    description="출원번호 하나로 자동 수집(웹 크롤러 또는 KIPRIS API)부터 원문 요약, 스펙 칩 발췌, TRL 진단, 60초 피치 대본까지 원스톱 실행",
 )(inspect_and_summarize_by_appno)
 
 
