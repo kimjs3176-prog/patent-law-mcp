@@ -9,7 +9,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Sequence
 
 from pydantic import Field
 
-from patent_law_mcp.policies.policy_manager import policy_manager
+from patent_law_mcp.policies.policy_manager import ProfileName, policy_for
 
 LicenseType = Literal["non_exclusive", "exclusive"]
 CompanyScale = Literal["farmer", "sme", "middle", "large"]
@@ -29,8 +29,9 @@ def design_licensing_terms(
     target_territory: str = "대한민국",
     contract_period_years: Annotated[int, Field(ge=1, le=20)] = 3,
     expected_sales_annual: Annotated[Optional[int], Field(ge=0)] = None,
+    profile: Optional[ProfileName] = None,
 ) -> Dict[str, Any]:
-    """국유특허 기술실시계약 조건 초안을 산출합니다.
+    """기술실시계약 조건 초안을 산출합니다 (국유특허는 최소실시료·경쟁입찰 등 고시·규정 기준 반영).
 
     Args:
         patent_id: 대상 특허번호
@@ -39,6 +40,7 @@ def design_licensing_terms(
         target_territory: 실시 지역
         contract_period_years: 계약 기간(년)
         expected_sales_annual: 실시 제품 예상 연매출(원). 주면 연간 경상기술료를 추정합니다
+        profile: "national"(국유특허), "public_research"(대학·출연연), "private_company"(민간). 비우면 기본 프로파일
     """
     require_choice(license_type, ("non_exclusive", "exclusive"), "license_type")
     require_choice(company_scale, ("farmer", "sme", "middle", "large"), "company_scale")
@@ -48,28 +50,28 @@ def design_licensing_terms(
         raise ValueError("expected_sales_annual은 0 이상이어야 합니다.")
 
     is_exclusive = license_type == "exclusive"
-    art = policy_manager.articles
-    excl = policy_manager.section("exclusive_licensing")
-    practice = policy_manager.section("contract_practice")
-    renewal = policy_manager.section("exclusive_renewal")
+    pm = policy_for(profile)
+    national = pm.is_national
+    art = pm.articles
+    practice = pm.section("contract_practice")
     rate = practice["reference_rates_by_scale"][company_scale]
-
-    min_royalty = excl["minimum_royalty_amount"]
-    deadline = excl["payment_deadline_days"]
+    excl = pm.section("exclusive_licensing") if national else {}
+    min_royalty = excl.get("minimum_royalty_amount", 0)
+    deadline = excl.get("payment_deadline_days")
     lump_sum = rate["lump_sum"] * (practice["exclusive_lump_sum_multiplier"] if is_exclusive else 1)
     running_rate = rate["running_rate"] * (practice["exclusive_running_multiplier"] if is_exclusive else 1)
-    if is_exclusive and lump_sum < min_royalty:
+    if national and is_exclusive and lump_sum < min_royalty:
         lump_sum = min_royalty
 
     financial: Dict[str, Any] = {
         "lump_sum_fee_krw": int(lump_sum),
-        "lump_sum_payment": f"계약 체결일부터 {deadline}일 이내 납부" if is_exclusive else "계약서에서 납부 기한 지정",
+        "lump_sum_payment": f"계약 체결일부터 {deadline}일 이내 납부" if national and is_exclusive else "계약서에서 납부 기한 지정",
         "running_royalty_rate": f"실시 제품 순매출액의 {running_rate * 100:.2f}%",
         "rate_basis": f"{rate['description']} — 기관 내부 참고 요율이며 법정 요율이 아닙니다",
         "minimum_royalty_rule": (
             f"전용실시 최소실시료 {min_royalty:,}원 이상, 계약일부터 {deadline}일 이내 납부 ({art['exclusive_minimum_royalty']})"
-            if is_exclusive
-            else "해당 없음 (통상실시)"
+            if national and is_exclusive
+            else ("해당 없음 (통상실시)" if national else "해당 없음 (국유특허 고시 기준은 이 프로파일에 적용되지 않음)")
         ),
     }
     if expected_sales_annual is not None:
@@ -77,7 +79,11 @@ def design_licensing_terms(
         financial["estimate_basis"] = f"예상 연매출 {expected_sales_annual:,}원 × {running_rate * 100:.2f}%"
 
     procedures: List[str] = []
-    if is_exclusive:
+    if not national:
+        procedures.append(f"{pm.metadata['notice_name']}에 따른 내부 심의·승인 절차를 거치십시오 ({pm.metadata['parent_regulation']}).")
+        if is_exclusive:
+            procedures.append(f"전용실시권은 등록해야 효력이 생깁니다 ({art['exclusive_license_registration']}). 등록비용 부담 주체를 명시하십시오.")
+    elif is_exclusive:
         if excl["competitive_bidding_required"]:
             procedures.append(
                 f"전용실시권 설정은 경쟁입찰이 원칙입니다 ({art['exclusive_competitive_bidding']}). "
@@ -86,7 +92,7 @@ def design_licensing_terms(
         procedures.append(f"전용실시권은 등록해야 효력이 생깁니다 ({art['exclusive_license_registration']}). 등록비용 부담 주체를 명시하십시오.")
     else:
         procedures.append(f"통상실시권 허락은 수의계약으로 합니다 ({art['non_exclusive_private_contract']}).")
-    if company_scale == "farmer":
+    if national and company_scale == "farmer":
         procedures.append(f"농어업인 소득 증대 목적이면 무상 처분 사유({art['free_disposal_grounds']}) 해당 여부를 먼저 검토하십시오.")
 
     clauses = [
@@ -106,7 +112,8 @@ def design_licensing_terms(
             "basis": "기관 실무 기준 (경상기술료 정산·감사 대비)",
         },
     ]
-    if is_exclusive:
+    if national and is_exclusive:
+        renewal = pm.section("exclusive_renewal")
         clauses.insert(0, {
             "clause": "전용실시 최소실시료 납부",
             "detail": f"실시료의 일부로 {min_royalty:,}원 이상을 계약일부터 {deadline}일 이내 납부",
@@ -129,7 +136,7 @@ def design_licensing_terms(
         "financial_terms": financial,
         "required_procedures": procedures,
         "mandatory_practice_clauses": clauses,
-        "legal_audit_basis": policy_manager.audit_block(),
+        "legal_audit_basis": pm.audit_block(),
     }
 
 
@@ -162,6 +169,7 @@ def _amounts(sentence: str) -> List[int]:
 def review_licensing_contract(
     contract_text: str,
     license_type: LicenseType = "exclusive",
+    profile: Optional[ProfileName] = None,
 ) -> Dict[str, Any]:
     """기술실시계약서 초안에서 필수 조항의 존재와 부정·면제 문구를 1차 점검합니다.
 
@@ -171,17 +179,19 @@ def review_licensing_contract(
     Args:
         contract_text: 계약서 초안 본문
         license_type: "exclusive"(전용실시) 또는 "non_exclusive"(통상실시)
+        profile: "national"(국유특허, 최소실시료 점검 포함), "public_research", "private_company". 비우면 기본 프로파일
     """
     require_choice(license_type, ("non_exclusive", "exclusive"), "license_type")
     is_exclusive = license_type == "exclusive"
-    art = policy_manager.articles
-    excl = policy_manager.section("exclusive_licensing")
-    practice = policy_manager.section("contract_practice")
-    min_royalty, deadline = excl["minimum_royalty_amount"], excl["payment_deadline_days"]
+    pm = policy_for(profile)
+    art = pm.articles
+    practice = pm.section("contract_practice")
     sents = _sentences(contract_text)
     checklist: List[Dict[str, Any]] = []
 
-    if is_exclusive:
+    if is_exclusive and pm.is_national:
+        excl = pm.section("exclusive_licensing")
+        min_royalty, deadline = excl["minimum_royalty_amount"], excl["payment_deadline_days"]
         name = f"전용실시 최소실시료 {min_royalty:,}원 이상·{deadline}일 이내 납부 ({art['exclusive_minimum_royalty']})"
         hits = _hits(sents, r"최소\s*실시료|선급\s*(?:기술료|실시료)|계약금")
         if not hits:
@@ -263,5 +273,5 @@ def review_licensing_contract(
         "compliance_summary": summary,
         "checklist": checklist,
         "limitations": "문장 단위 키워드 점검입니다. 조항 간 관계·예외 조항·별지 내용은 판단하지 못합니다.",
-        "legal_audit_basis": policy_manager.audit_block(),
+        "legal_audit_basis": pm.audit_block(),
     }

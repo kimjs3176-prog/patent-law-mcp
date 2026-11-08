@@ -39,7 +39,8 @@ from patent_law_mcp.tools.patent_search import search_patents
 mcp = FastMCP(
     name="patent-law-mcp",
     instructions=(
-        "공공·국유 특허 기술이전 계약 및 국가공무원 등 직무발명 처분·보상 실무 보조 MCP 서버. "
+        "특허 기술이전·직무발명 보상·권리 관리 실무 보조 MCP 서버. 기관 유형별 프로파일(national 국유특허, "
+        "public_research 대학·출연연, private_company 민간 기업)을 profile 인자나 PATENT_LAW_MCP_PROFILE로 선택합니다. "
         "도구가 found=False·warnings·'미확인'을 반환하면 그 사실을 그대로 전달하고, 특허번호·출원인·수치를 추측해 채우지 마십시오. "
         "법령·고시 기준값은 policies/kipo_notice_rules.yaml에 있으며, verification_notes에 원문 확인이 필요한 항목이 표시됩니다."
     ),
@@ -131,7 +132,7 @@ register(
 register(
     design_licensing_terms,
     "design_licensing_terms",
-    "국유특허 통상·전용실시 계약조건 초안 산출 (전용실시 최소실시료·납부기한, 경쟁입찰 원칙, 예상 매출 기준 경상기술료 추정)",
+    "통상·전용실시 계약조건 초안 산출 (예상 매출 기준 경상기술료 추정, 국유특허 프로파일은 최소실시료·경쟁입찰 원칙 반영)",
 )
 register(
     review_licensing_contract,
@@ -143,28 +144,29 @@ register(
 register(
     process_invention_disclosure,
     "process_invention_disclosure",
-    "직무발명 신고 접수 및 직무발명심의위원회 상정 안건 초안 작성",
+    "직무발명 신고 접수 및 승계 심의 안건 초안 작성 (국유특허·대학/출연연·민간 기업 프로파일)",
 )
 register(
     calculate_disposal_compensation,
     "calculate_disposal_compensation",
-    "국유특허 처분수입금 기준 처분보상금 산출 및 발명자별 비과세·과세 구분 (재직자 근로소득 / 퇴직자 기타소득)",
+    "기술료 수입 기준 발명자 보상금 산출 및 발명자별 비과세·과세 구분 (재직 근로소득 / 퇴직 기타소득). "
+    "profile: national(국유특허 처분보상금)·public_research·private_company",
 )
 register(
     evaluate_unutilized_free_license,
     "evaluate_unutilized_free_license",
-    "등록 후 일정 기간 미실시된 국유특허의 무상 통상실시 해당 여부와 후속 유상 전환 조건 검토",
+    "[국유특허 전용] 등록 후 일정 기간 미실시된 국유특허의 무상 통상실시 해당 여부와 후속 유상 전환 조건 검토",
 )
 register(
     evaluate_exclusive_renewal,
     "evaluate_exclusive_renewal",
-    "국유특허 전용실시계약 갱신 검토 (투자금 미회수·인허가 시험 진행 사유 자동 판정, 신청 기한 확인)",
+    "[국유특허 전용] 전용실시계약 갱신 검토 (투자금 미회수·인허가 시험 진행 사유 자동 판정, 신청 기한 확인)",
 )
 
 register(
     get_policy_table,
     "get_policy_table",
-    "현재 적용 중인 법령·고시 기준값(최소실시료·보상 비율·비과세 한도 등), 근거 조항, 원문 확인이 필요한 항목 조회",
+    "프로파일(national·public_research·private_company)별 기준값(최소실시료·보상 비율·비과세 한도 등), 근거 조항, 원문 확인 필요 항목 조회",
 )
 
 # 4. 권리범위·포트폴리오·수요기업

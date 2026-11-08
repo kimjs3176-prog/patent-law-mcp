@@ -23,6 +23,7 @@ def offline(monkeypatch):
     monkeypatch.delenv("KIPRIS_API_KEY", raising=False)
     monkeypatch.delenv("PATENT_LAW_MCP_POLICY_FILE", raising=False)
     monkeypatch.delenv("LAW_OC", raising=False)
+    monkeypatch.delenv("PATENT_LAW_MCP_PROFILE", raising=False)
     monkeypatch.setenv("PATENT_LAW_MCP_CACHE", "off")
     monkeypatch.setattr(kipris_connector, "RETRY_DELAY_SECONDS", 0)
 

@@ -6,6 +6,7 @@
 # - verification_notes의 항목은 원문 대조가 끝나면 지우십시오. 도구 출력에 그대로 표시됩니다.
 
 metadata:
+  profile_type: "national"
   notice_name: "국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 업무 운영요령"
   notice_id: "지식재산처고시 제2025-4호"
   effective_date: "2025-10-30"

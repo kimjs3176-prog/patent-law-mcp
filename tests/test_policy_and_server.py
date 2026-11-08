@@ -64,3 +64,55 @@ def test_registered_tools():
 def test_mcp_rejects_invalid_enum():
     with pytest.raises(Exception, match="license_type"):
         asyncio.run(mcp.call_tool("design_licensing_terms", {"patent_id": "x", "license_type": "전용실시"}))
+
+
+# ---------------------------------------------------------------- 프로파일
+from patent_law_mcp.policies.policy_manager import PROFILE_FILES  # noqa: E402
+from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract  # noqa: E402
+from patent_law_mcp.tools.employee_invention_practice import (  # noqa: E402
+    calculate_disposal_compensation,
+    evaluate_unutilized_free_license,
+    process_invention_disclosure,
+)
+
+
+@pytest.mark.parametrize("name", list(PROFILE_FILES))
+def test_all_profiles_valid(name):
+    assert validate_policy(yaml.safe_load(PROFILE_FILES[name].read_text(encoding="utf-8"))) == []
+
+
+def test_public_research_requires_institution_ratio():
+    shares = [{"name": "A", "share_rate": 1.0}]
+    with pytest.raises(ValueError, match="payout_ratio"):
+        calculate_disposal_compensation(10_000_000, shares, profile="public_research")
+    r = calculate_disposal_compensation(10_000_000, shares, payout_ratio=0.6, profile="public_research")
+    assert r["total_compensation_krw"] == 6_000_000 and r["payout_ratio_source"] == "호출 시 입력"
+    assert r["legal_audit_basis"]["profile"] == "public_research"
+
+
+def test_controlling_shareholder_gets_no_tax_free():
+    r = calculate_disposal_compensation(
+        10_000_000, [{"name": "대표", "share_rate": 1.0, "is_controlling_shareholder": True}], payout_ratio=0.5, profile="private_company"
+    )
+    row = r["payment_table"][0]
+    assert row["tax_free_krw"] == 0 and row["taxable_krw"] == 5_000_000
+
+
+def test_non_national_contract_has_no_minimum_royalty_or_bidding():
+    r = design_licensing_terms("x", "exclusive", "sme", profile="public_research")
+    assert r["financial_terms"]["lump_sum_fee_krw"] == 7_500_000
+    assert not any("경쟁입찰" in p for p in r["required_procedures"])
+    assert "최소실시료" not in " ".join(c["clause"] for c in r["mandatory_practice_clauses"])
+    review = review_licensing_contract("계약기간은 3년, 실시지역은 대한민국.", profile="private_company")
+    assert not any("최소실시료" in c["item"] for c in review["checklist"])
+
+
+def test_institution_disclosure_uses_succession_deadline():
+    r = process_invention_disclosure("발명", ["A"], profile="private_company")
+    assert any("4개월" in step for step in r["administrative_steps"])
+
+
+def test_env_profile_switch_keeps_national_only_tools_national(monkeypatch):
+    monkeypatch.setenv("PATENT_LAW_MCP_PROFILE", "public_research")
+    assert evaluate_unutilized_free_license(5)["eligible_for_free_license"] is True
+    assert design_licensing_terms("x", "exclusive")["legal_audit_basis"]["profile"] == "public_research"
