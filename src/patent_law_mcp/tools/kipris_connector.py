@@ -20,13 +20,13 @@ import httpx
 from bs4 import BeautifulSoup
 from pydantic import Field
 
+from patent_law_mcp import net
 from patent_law_mcp.config import settings
 from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.claim_utils import normalize_ws
 
 KIPRIS_API_BASE = "https://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getBibliographyDetailInfoSearch"
 GOOGLE_PATENTS_URL = "https://patents.google.com/patent/{gid}/ko"
-USER_AGENT = "Mozilla/5.0 (compatible; patent-law-mcp/0.2; +https://github.com/kimjs3176-prog/patent-law-mcp)"
 RETRY_DELAY_SECONDS = 2.0
 
 NumberType = Literal["auto", "application", "registration", "publication"]
@@ -99,8 +99,7 @@ def parse_kr_patent_number(identifier: str, number_type: NumberType = "auto") ->
 
 
 def _http_get(url: str, **kwargs: Any) -> httpx.Response:
-    """네트워크 호출 지점 (테스트에서 교체)."""
-    return httpx.get(url, **kwargs)
+    return net.http_get(url, **kwargs)
 
 
 def _digits(text: str) -> str:
@@ -177,7 +176,7 @@ def fetch_from_google_patents(num: KrPatentNumber) -> Tuple[Optional[Dict[str, A
         return None, "Google Patents는 출원번호로 조회할 수 없습니다 (같은 숫자의 공개번호는 다른 특허입니다)."
 
     url = GOOGLE_PATENTS_URL.format(gid=num.google_id)
-    headers = {"User-Agent": USER_AGENT, "Accept-Language": "ko-KR,ko;q=0.9"}
+    headers = {"Accept-Language": "ko-KR,ko;q=0.9"}
     resp = None
     for attempt in range(2):
         try:

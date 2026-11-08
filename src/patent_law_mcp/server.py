@@ -33,6 +33,8 @@ from patent_law_mcp.tools.employee_invention_practice import (
     process_invention_disclosure,
 )
 from patent_law_mcp.tools.kipris_connector import fetch_patent_smart, inspect_and_summarize_by_appno
+from patent_law_mcp.tools.law_lookup import get_law_article, search_laws
+from patent_law_mcp.tools.patent_search import search_patents
 
 mcp = FastMCP(
     name="patent-law-mcp",
@@ -51,7 +53,25 @@ def register(fn, name: str, description: str, annotations: ToolAnnotations = LOC
     mcp.tool(name=name, description=description, annotations=annotations)(fn)
 
 
-# 0. 특허 원문 확보
+# 0. 특허 검색·원문 확보·법령 조회 (실데이터)
+register(
+    search_patents,
+    "search_patents",
+    "KIPRIS Plus 공식 API로 한국 특허 검색 (키워드 또는 출원인+명칭, KIPRIS_API_KEY 필요). 결과는 가공·재정렬하지 않음",
+    NETWORK,
+)
+register(
+    search_laws,
+    "search_laws",
+    "국가법령정보센터에서 법령(법률·시행령·시행규칙) 또는 행정규칙(고시 등) 검색 (LAW_OC 필요)",
+    NETWORK,
+)
+register(
+    get_law_article,
+    "get_law_article",
+    "법령명과 조문 번호로 현행 조문 원문(항·호·목)과 시행일 조회 (예: 특허법 제100조, LAW_OC 필요)",
+    NETWORK,
+)
 register(
     fetch_patent_smart,
     "fetch_patent_smart",

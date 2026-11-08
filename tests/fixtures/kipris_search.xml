@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response><header><successYN>Y</successYN><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+<body><items>
+<item><indexNo>1</indexNo><registerStatus>등록</registerStatus><inventionTitle>굳지 않는 떡의 제조방법</inventionTitle><ipcNumber>A23L 7/10</ipcNumber>
+<registerNumber>1012345670000</registerNumber><registerDate>20120101</registerDate><applicationNumber>1020110012345</applicationNumber><applicationDate>20110201</applicationDate>
+<openNumber>1020120000001</openNumber><openDate>20120105</openDate><applicantName>대한민국(농촌진흥청장)</applicantName><astrtCont>떡의 노화를 방지한다.</astrtCont></item>
+<item><indexNo>2</indexNo><registerStatus>공개</registerStatus><inventionTitle>떡 성형 장치</inventionTitle><applicationNumber>1020230000002</applicationNumber><applicantName>주식회사 가나다</applicantName></item>
+</items><count><numOfRows>20</numOfRows><pageNo>1</pageNo><totalCount>2</totalCount></count></body></response>
