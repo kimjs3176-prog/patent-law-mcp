@@ -1,0 +1,38 @@
+name: Upstream sync check
+
+# patent-summary-wizard·patent-video-skill의 추적 파일이 바뀌면 이슈를 열거나 갱신합니다.
+on:
+  schedule:
+    - cron: "17 21 * * *"   # 매일 06:17 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          set +e
+          python3 scripts/sync_upstream.py --check --report drift.md
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Open or update drift issue
+        if: steps.check.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create upstream-sync --color FBCA04 --description "업스트림 변경 반영 필요" --force
+          num=$(gh issue list --label upstream-sync --state open --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue edit "$num" --body-file drift.md
+          else
+            gh issue create --title "업스트림 변경 반영 필요 (patent-summary-wizard / patent-video-skill)" \
+              --label upstream-sync --body-file drift.md
+          fi
+      - name: Fail on script error
+        if: steps.check.outputs.code == '2'
+        run: exit 1

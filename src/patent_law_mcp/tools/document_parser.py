@@ -14,6 +14,7 @@ from pydantic import Field
 from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.bundling_and_targeting import find_target_licensees_by_patent
 from patent_law_mcp.tools.claim_utils import is_deleted_claim, is_dependent_claim, normalize_ws
+from patent_law_mcp.upstream.gazette_holders import holders_from_text
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 BUNDLED_FILE = DATA_DIR / "bundled_patents.json"
@@ -106,9 +107,14 @@ def parse_raw_patent_text(raw_text: Annotated[str, Field(min_length=20)]) -> Dic
     register_number = _first(rf"(?:【등록번호】|\(11\)\s*등록번호|등록번호)\s*[:：]?\s*({_REG_NO})(?!\d)", text)
     publication_number = _first(rf"(?:\(11\)\s*공개번호|공개번호)\s*[:：]?\s*({_PAT_NO})", text)
 
-    applicant = _first(r"【(?:출원인|특허권자)】[\s\S]{0,40}?【명칭】\s*([^\n]+)", text) or _first(
-        r"(?:\(73\)\s*특허권자|\(71\)\s*출원인|【특허권자】|【출원인】|특허권자|출원인)\s*[:：]?\s*([^\n]+)", text
-    )
+    # 공보 (73)/(71): patent-video-skill holders_from_text로 이름만 추출 (주소 줄 제거)
+    applicants, holder_kind = holders_from_text(text)
+    if not applicants:
+        single = _first(r"【(?:출원인|특허권자)】[\s\S]{0,40}?【명칭】\s*([^\n]+)", text) or _first(
+            r"(?:\(73\)\s*특허권자|\(71\)\s*출원인|【특허권자】|【출원인】|특허권자|출원인)\s*[:：]?\s*([^\n]+)", text
+        )
+        applicants = [single] if single else []
+    applicant = ", ".join(applicants)
 
     ipc_match = re.search(
         r"(?:【국제특허분류[^】]*】|\(51\)|국제특허분류|Int\.\s*Cl|IPC)[\s\S]{0,200}?([A-H]\d{2}[A-Z])\s*(\d{1,4}\s*/\s*\d{2,6})",
@@ -141,6 +147,8 @@ def parse_raw_patent_text(raw_text: Annotated[str, Field(min_length=20)]) -> Dic
         "register_number": _format_reg_no(register_number) if register_number else "",
         "publication_number": _format_app_no(publication_number) if publication_number else "",
         "applicant": applicant,
+        "applicants": applicants,
+        "holder_kind": {"73": "특허권자 (등록공보)", "71": "출원인 (공개공보)"}.get(holder_kind or "", "미확인"),
         "ipc_code": ipc_code,
         "abstract": abstract,
         "claims_count": len(claims),

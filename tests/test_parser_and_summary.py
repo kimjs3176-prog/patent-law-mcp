@@ -19,6 +19,7 @@ def test_gazette_b1_format():
     assert r["application_number"] == "10-2010-0062402"
     assert r["register_number"] == "10-1070281"
     assert r["applicant"] == "대한민국(농촌진흥청장)"
+    assert r["holder_kind"] == "특허권자 (등록공보)"
     assert r["ipc_code"] == "A23L 7/10"
     assert r["abstract"].startswith("본 발명은 전분의 노화")
     assert r["claim_numbers"] == [1, 2, 3]
@@ -106,3 +107,10 @@ def test_ground_summary_figures():
 def test_trl_requires_evidence():
     assert evaluate_commercialization("식품")["estimated_trl"] is None
     assert evaluate_commercialization("식품", "prototype")["estimated_trl"] == "TRL 5~6"
+
+
+def test_gazette_holder_address_lines_are_dropped():
+    text = fixture_text("gazette_b1.txt").replace(
+        "     대한민국(농촌진흥청장)\n", "     대한민국(관리부서:농촌진흥청장)\n     전라북도 전주시 덕진구 농생명로 300\n"
+    )
+    assert parse_raw_patent_text(text)["applicants"] == ["대한민국(관리부서:농촌진흥청장)"]
