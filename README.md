@@ -145,6 +145,12 @@ uv run pytest -q
 python3 scripts/sync_upstream.py --check
 ```
 
+```bash
+uv run python scripts/scenario_check.py
+```
+
+`scenario_check.py`는 서버를 별도 프로세스로 띄워 MCP 프로토콜(stdio·HTTP)로 36개 실사용 시나리오를 점검합니다. 네트워크가 없으면 `--offline`을 붙이십시오.
+
 ---
 
 > ⚖️ **면책** 이 서버는 변리사의 출원 대리, 명세서 작성, 심사 대응, 침해 감정을 대체하지 않습니다. 계약·보상·기한 계산 결과는 실무 검토용 초안이며, 최종 판단은 법령·고시 원문과 등록원부, 전문가 검토로 확인하십시오.

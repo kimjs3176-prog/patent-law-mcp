@@ -66,3 +66,11 @@ def test_law_api_error_message(fake_http, monkeypatch):
     fake_http.routes["lawSearch.do"] = (200, '{"result": "사용자 정보 검증에 실패하였습니다.", "msg": "IP를 등록해 주세요."}')
     r = search_laws("특허법")
     assert r["found"] is False and "검증에 실패" in r["error"]
+
+
+def test_http_client_logs_do_not_expose_query_keys():
+    import logging
+
+    from patent_law_mcp import net  # noqa: F401  (import 시 로거 수준 설정)
+
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
