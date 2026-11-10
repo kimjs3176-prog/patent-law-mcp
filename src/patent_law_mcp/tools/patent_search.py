@@ -74,7 +74,7 @@ def search_patents(
         return {
             "found": False,
             "error": "특허 검색에는 KIPRIS Plus 인증키가 필요합니다 (환경변수 KIPRIS_API_KEY).",
-            "how_to": "plus.kipris.or.kr에서 '특허·실용 공개·등록공보' 서비스 키를 발급받아 MCP 설정의 env에 넣으십시오.",
+            "how_to": "plus.kipris.or.kr에서 '특허·실용 공개·등록공보' 서비스 키를 발급받아 MCP 설정의 env에 넣으십시오. 자세한 절차는 저장소 docs/KIPRIS_API_KEY.md를 참고하십시오.",
         }
 
     common = {
