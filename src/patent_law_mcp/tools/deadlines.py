@@ -257,6 +257,19 @@ def check_patent_rights_status(
     if not patent["found"]:
         return patent
 
+    from patent_law_mcp.tools.foreign_patents import is_foreign_identifier
+
+    foreign_identifier = is_foreign_identifier(patent_identifier)
+    country = patent.get("country") or ("미확인" if foreign_identifier else "KR")
+    if country != "KR" or foreign_identifier:
+        return {
+            "patent": patent,
+            "country": country,
+            "term": {"error": "해외 특허에는 한국 기준 존속기간 계산을 적용하지 않습니다."},
+            "annuity": {"error": "해외 특허에는 한국 기준 연차료 계산을 적용하지 않습니다."},
+            "note": "해당 국가의 등록원부와 규정을 확인하십시오. WO 공개문서는 국가별 권리 확인이 필요합니다.",
+        }
+
     def parse(d: str) -> Optional[date]:
         digits = "".join(ch for ch in d or "" if ch.isdigit())
         return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8])) if len(digits) >= 8 else None
@@ -281,3 +294,4 @@ def check_patent_rights_status(
         result["annuity"] = {"note": "registration_date와 paid_through_year를 주면 연차료 납부기한·상태를 계산합니다."}
     result["note"] = "권리 상태의 최종 확인은 특허청 등록원부로 하십시오."
     return result
+

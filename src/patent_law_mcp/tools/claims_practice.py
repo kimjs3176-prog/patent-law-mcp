@@ -82,8 +82,10 @@ def verify_tech_transfer_scope_match(
         negated = [k for k, s in states.items() if s == "negated"]
         need = max(1, math.ceil(len(keywords) / 2))
 
-        if keywords and len(present) >= need:
-            status, matched = "일치 가능성 높음", True
+        if negated:
+            status, matched = "명시적 부정 (확인 필요)", False
+        elif keywords and len(present) >= need:
+            status, matched = "키워드 대응 (구성 충족 확인 필요)", True
         elif present:
             status, matched = "부분 일치 (확인 필요)", False
         else:
@@ -102,13 +104,13 @@ def verify_tech_transfer_scope_match(
     partial = any(r["company_product_status"].startswith("부분") for r in results)
     if matched_count == len(results):
         verdict = (
-            "모든 구성요소가 제품 설명에서 확인됩니다. 제품이 청구항 권리범위에 속할 가능성이 높으므로 "
-            "실시권 계약 필요성을 검토하십시오."
+            "모든 구성요소에서 일부 키워드가 대응됩니다. 구성요소 충족이나 권리범위 포함 여부를 "
+            "확정한 결과가 아니므로 원문과 제품 사양을 대조하십시오."
         )
     elif matched_count or partial:
         verdict = (
-            f"{len(results)}개 구성요소 중 {matched_count}개만 확인됩니다. 구성요소 완비 원칙상 하나라도 빠지면 "
-            "문언 침해가 성립하지 않을 수 있으나, 균등 여부와 향후 제품 계획을 확인하십시오."
+            f"{len(results)}개 구성요소 중 {matched_count}개에서 키워드가 대응됩니다. "
+            "누락·부정된 표현을 확인하고 구성요소 충족 여부는 별도로 검토하십시오."
         )
     else:
         verdict = "제품 설명에서 청구항 구성요소가 확인되지 않습니다. 대상 특허나 도입 범위를 다시 검토하십시오."
@@ -121,3 +123,4 @@ def verify_tech_transfer_scope_match(
         "method_note": "키워드 대조이며 동의어·상위개념·균등물은 판단하지 못합니다. 부정 표현('~없이', '~미적용')은 불일치로 봅니다.",
         "disclaimer": "기술이전 상담용 1차 검토 자료이며, 침해 여부 판단은 변리사 감정을 거쳐야 합니다.",
     }
+
