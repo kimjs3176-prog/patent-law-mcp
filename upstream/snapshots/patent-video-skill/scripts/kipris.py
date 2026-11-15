@@ -4,7 +4,9 @@ Usage: python -I tools/kipris.py <application-number> [...] | --all
        python -I tools/kipris.py --pdf <application-number> [...]   (no key: uses data/raw/<appno>.pdf downloaded by hand)
 Writes data/raw/<appno>.xml and data/patents/<appno>/biblio.json, fulltext.txt and fig-*.jpg.
 biblio.json "holders" is the gazette's (73) 특허권자 (or (71) 출원인 for a published gazette, "holder_kind"); the ending credits use it.
+"fulltext_kind" says which gazette fulltext.txt is: "ann" (공고전문, the registered gazette), "pub" (공개전문), or null.
 The service key is read from the KIPRIS_API_KEY env var or the project's .env file.
+A refused key or a used-up daily quota stops the run (exit 2); rerun once it is fixed and the run resumes.
 """
 import json
 import os
@@ -50,7 +52,27 @@ def text(el, path):
     return (n.text or "").strip() if n is not None and n.text else ""
 
 
+class KiprisKeyError(RuntimeError):
+    """The key was refused or the daily quota is used up: every later call fails the same way, so the batch stops."""
+
+
+# KIPRIS answers errors with HTTP 200 and <successYN>N</successYN>; these result codes are about the key or the quota
+_KEY_CODES = {"20", "21", "22", "30", "31", "32", "33"}
+_KEY_MSG = re.compile(r"KEY|LIMITED_NUMBER|ACCESS_DENIED|EXPIRED|UNREGISTERED_IP|UNSIGNED|서비스\s*키|인증\s*키|트래픽|한도", re.I)
+
+
+def api_check(root):
+    """Raise when the response is an error (KiprisKeyError for key/quota errors); a response with no item is not one."""
+    code = text(root, ".//header/resultCode") or text(root, ".//returnReasonCode")  # the latter: data.go.kr gateway format
+    if text(root, ".//header/successYN").upper() != "N" and not text(root, ".//returnReasonCode"):
+        return
+    msg = text(root, ".//header/resultMsg") or text(root, ".//returnAuthMsg") or text(root, ".//errMsg")
+    err = f"{code} {msg}".strip() or ET.tostring(root, encoding="unicode")[:300]
+    raise (KiprisKeyError if code in _KEY_CODES or _KEY_MSG.search(msg) else RuntimeError)(err)
+
+
 def parse(root):
+    api_check(root)
     item = root.find(".//item")
     if item is None:
         msg = text(root, ".//resultMsg") or text(root, ".//errMsg") or ET.tostring(root, encoding="unicode")[:300]
@@ -125,16 +147,31 @@ _PDF_OPENER = urllib.request.build_opener(_KiprisOnly)
 MAX_PDF = 200 * 2**20
 
 
-def fulltext(num, outdir):
-    """Download the registered (else published) full-text PDF; extract its text and figure images."""
-    for op in ("getPubFullTextInfoSearch", "getAnnFullTextInfoSearch"):
-        url = BASE.rsplit("/", 1)[0] + "/" + op + "?" + urllib.parse.urlencode({"applicationNumber": num, "ServiceKey": service_key()})
+FULLTEXT_OPS = {"ann": "getAnnFullTextInfoSearch", "pub": "getPubFullTextInfoSearch"}  # 공고전문 / 공개전문
+
+
+def fulltext(num, outdir, registered=False):
+    """Download the gazette PDF; extract its text and figure images. A registered patent gets its 공고전문 (the
+    (73) 특허권자 and the granted text), falling back to the 공개전문; "kind" in the result says which one it is."""
+    err = None
+    for kind in ("ann", "pub") if registered else ("pub", "ann"):
+        q = urllib.parse.urlencode({"applicationNumber": num, "ServiceKey": service_key()})
+        url = BASE.rsplit("/", 1)[0] + "/" + FULLTEXT_OPS[kind] + "?" + q
         with urllib.request.urlopen(url, timeout=30) as r:
             root = ET.fromstring(r.read())
+        try:
+            api_check(root)
+        except KiprisKeyError:
+            raise
+        except RuntimeError as e:  # an error for this kind only: try the other, and report it if neither has a PDF
+            err = e
+            continue
         path = text(root, ".//item/path")
         if path:
             break
     else:
+        if err:
+            raise err
         return None
     u = urllib.parse.urlparse(path)
     if not _kipris_url(path):
@@ -151,7 +188,7 @@ def fulltext(num, outdir):
         raise RuntimeError("full-text download is not a PDF")
     with open(pdf, "wb") as f:
         f.write(data)
-    return parse_pdf(pdf, outdir)
+    return dict(parse_pdf(pdf, outdir), kind=kind)
 
 
 def parse_pdf(pdf, outdir):
@@ -177,6 +214,7 @@ def parse_pdf(pdf, outdir):
 
 if __name__ == "__main__":
     import time
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # KIPRIS error text can be Korean; a Windows pipe is cp949
     os.makedirs(os.path.join(ROOT, "data", "patents"), exist_ok=True)
     args = sys.argv[1:]
     if args[:1] == ["--pdf"]:
@@ -191,7 +229,8 @@ if __name__ == "__main__":
             ft = parse_pdf(pdf, outdir)
             hs, hk = gazette_holders(outdir)
             with open(os.path.join(outdir, "biblio.json"), "w", encoding="utf-8") as f:
-                json.dump({"applicationNumber": num, "claims": [], "source": "pdf", "fulltext": ft, "holders": hs, "holder_kind": hk},
+                json.dump({"applicationNumber": num, "claims": [], "source": "pdf", "fulltext": ft, "fulltext_kind": None,
+                           "holders": hs, "holder_kind": hk},
                           f, ensure_ascii=False, indent=2)
             print(num, "ok from PDF:", ft["pages"], "pages,", len(ft["figures"]), "figures (claims: read them in fulltext.txt)")
         sys.exit(0)
@@ -205,7 +244,8 @@ if __name__ == "__main__":
                 return False
         args = [m["appno"] for m in master if not fetched(m["appno"])]
         print(len(args), "to fetch", flush=True)
-    for a in args:
+    done = 0
+    for i, a in enumerate(args):
         time.sleep(0.3)
         try:
             num, root = fetch(a)
@@ -214,18 +254,32 @@ if __name__ == "__main__":
             continue
         try:
             info = parse(root)
+            outdir = os.path.join(ROOT, "data", "patents", num)
+            os.makedirs(outdir, exist_ok=True)
+            try:
+                info["fulltext"] = fulltext(num, outdir, registered=bool(info.get("registerNumber")))
+            except KiprisKeyError:
+                raise
+            except Exception as e:
+                print(num, "FULLTEXT ERROR", e, flush=True)
+                info["fulltext"] = None
+        except KiprisKeyError as e:  # every later patent would fail the same way (and spend the quota): stop here
+            print(f"{num} KIPRIS key/quota error: {e}\nstopped at {i + 1} of {len(args)} ({done} fetched): check KIPRIS_API_KEY "
+                  "(.env or environment) or wait for the daily quota to reset, then rerun (--all resumes)", flush=True)
+            sys.exit(2)
         except RuntimeError as e:
             print(num, "ERROR", e)
             continue
-        outdir = os.path.join(ROOT, "data", "patents", num)
-        os.makedirs(outdir, exist_ok=True)
-        try:
-            info["fulltext"] = fulltext(num, outdir)
-        except Exception as e:
-            print(num, "FULLTEXT ERROR", e, flush=True)
-            info["fulltext"] = None
+        ft = info["fulltext"] or {}
+        info["fulltext_kind"] = ft.pop("kind", None)  # kept beside "fulltext", whose shape stays as --pdf writes it
         info["holders"], info["holder_kind"] = gazette_holders(outdir)
         with open(os.path.join(outdir, "biblio.json"), "w", encoding="utf-8") as f:
             json.dump(info, f, ensure_ascii=False, indent=2)
-        ft = info["fulltext"] or {}
-        print(num, "ok", len(info["claims"]), "claims,", ft.get("pages"), "pages,", len(ft.get("figures", [])), "figures")
+        done += 1
+        if not ft:
+            print(num, "ok", len(info["claims"]), "claims, no full text", flush=True)
+            continue
+        note = ("  (registered, but only the 공개전문 was available)"
+                if info.get("registerNumber") and info["fulltext_kind"] == "pub" else "")
+        print(num, "ok", len(info["claims"]), "claims,", ft.get("pages"), f"pages ({info['fulltext_kind']}),",
+              len(ft.get("figures", [])), "figures" + note, flush=True)

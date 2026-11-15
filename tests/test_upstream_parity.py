@@ -2,12 +2,18 @@
 
 - patent-summary-wizard/src/test/summaryGrounding.test.ts
 - patent-summary-wizard/src/test/trlConsistency.test.ts, trlStage.test.ts, trlReasonStage.test.ts
+- patent-video-skill/scripts/kipris.py api_check (업스트림 테스트 없음, 원본 규칙대로 작성)
 업스트림 테스트가 바뀌면 이 파일도 같이 고쳐 Python 포팅이 같은 결과를 내는지 확인합니다.
 """
 
 import re
 
+import xml.etree.ElementTree as ET
+
+import pytest
+
 from patent_law_mcp.tools.analysis import evaluate_commercialization, ground_patent_applications
+from patent_law_mcp.tools.kipris_connector import KiprisKeyError, kipris_api_check, parse_kipris_xml
 from patent_law_mcp.upstream.application_grounding import ground_applications
 from patent_law_mcp.upstream.gazette_holders import holders_from_text
 from patent_law_mcp.upstream.summary_grounding import GroundingSource as S
@@ -199,3 +205,37 @@ def test_video_signature_types():
     assert hint["claim_structure"]["preamble"] == "항원 단백질"
     assert [d["no"] for d in hint["claim_structure"]["deps"]] == [2, 3]
     assert hint["claim_structure"]["deps"][1]["of"] == 2
+
+
+# ---------------------------------------------------------------- patent-video-skill scripts/kipris.py api_check
+def _hdr(ok, code="", msg=""):
+    return ET.fromstring(f"<response><header><successYN>{ok}</successYN><resultCode>{code}</resultCode>"
+                         f"<resultMsg>{msg}</resultMsg></header><body><items/></body></response>")
+
+
+def test_kipris_api_check_passes_success_without_item():
+    kipris_api_check(_hdr("Y", "00", "NORMAL SERVICE"))  # item이 없는 정상 응답은 오류가 아님
+    with pytest.raises(LookupError) as e:
+        parse_kipris_xml(ET.tostring(_hdr("Y", "00", "NORMAL SERVICE")))
+    assert not isinstance(e.value, KiprisKeyError)
+
+
+@pytest.mark.parametrize("code,msg", [("30", "등록되지 않은 서비스키"), ("22", "LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS"),
+                                      ("10", "SERVICE KEY IS NOT REGISTERED ERROR."), ("99", "일일 트래픽 한도 초과")])
+def test_kipris_api_check_key_and_quota_errors(code, msg):
+    with pytest.raises(KiprisKeyError, match=code):
+        kipris_api_check(_hdr("n", code, msg))
+
+
+def test_kipris_api_check_other_error_is_not_key_error():
+    with pytest.raises(LookupError) as e:
+        kipris_api_check(_hdr("N", "11", "NO DATA"))
+    assert not isinstance(e.value, KiprisKeyError) and str(e.value) == "11 NO DATA"
+
+
+def test_kipris_api_check_data_go_kr_gateway_format():
+    root = ET.fromstring("<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg>"
+                         "<returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg>"
+                         "<returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>")
+    with pytest.raises(KiprisKeyError, match="^30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR$"):
+        kipris_api_check(root)
