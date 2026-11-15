@@ -100,14 +100,16 @@ def validate_policy(policy: Any) -> List[str]:
         return ["최상위가 매핑(dict)이 아닙니다."]
     errors: List[str] = []
     _check(policy, COMMON_SCHEMA, errors)
-    profile = (policy.get("metadata") or {}).get("profile_type")
+    metadata = policy.get("metadata")
+    profile = metadata.get("profile_type") if isinstance(metadata, dict) else None
     if profile == "national":
         _check(policy, NATIONAL_SCHEMA, errors)
     elif profile in ("public_research", "private_company"):
         _check(policy, INSTITUTION_SCHEMA, errors)
     else:
         errors.append(f"metadata.profile_type은 national·public_research·private_company 중 하나여야 합니다 (현재: {profile!r}).")
-    rates = (policy.get("contract_practice") or {}).get("reference_rates_by_scale") or {}
+    contract = policy.get("contract_practice")
+    rates = contract.get("reference_rates_by_scale") if isinstance(contract, dict) else {}
     for scale in REQUIRED_SCALES:
         entry = rates.get(scale) if isinstance(rates, dict) else None
         if not isinstance(entry, dict) or not {"lump_sum", "running_rate", "description"} <= set(entry):
@@ -225,3 +227,4 @@ def get_policy_table(profile: Optional[ProfileName] = None) -> Dict[str, Any]:
         "how_to_update": "이 파일의 값을 고치면 다음 도구 호출부터 반영됩니다 (서버 재시작 불필요).",
         **pm.policy,
     }
+

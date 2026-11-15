@@ -6,9 +6,11 @@
 """
 
 import json
+import math
 import os
 import sqlite3
 import time
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -26,13 +28,19 @@ def _path() -> Optional[Path]:
 
 def _ttl_seconds(ttl_hours: Optional[float]) -> float:
     default = float(os.environ.get("PATENT_LAW_MCP_CACHE_TTL_HOURS", "168"))
+    if not math.isfinite(default) or default < 0:
+        raise ValueError("캐시 보관 기간은 유한한 0 이상의 숫자여야 합니다.")
     return (min(ttl_hours, default) if ttl_hours is not None else default) * 3600
 
 
 def _connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=5)
-    conn.execute("CREATE TABLE IF NOT EXISTS cache (ns TEXT, key TEXT, stored REAL, value TEXT, PRIMARY KEY (ns, key))")
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS cache (ns TEXT, key TEXT, stored REAL, value TEXT, PRIMARY KEY (ns, key))")
+    except sqlite3.Error:
+        conn.close()
+        raise
     return conn
 
 
@@ -41,14 +49,16 @@ def get(ns: str, key: str, ttl_hours: Optional[float] = None) -> Optional[Dict[s
     if not path or not path.exists():
         return None
     try:
-        with _connect(path) as conn:
+        with closing(_connect(path)) as conn:
             row = conn.execute("SELECT stored, value FROM cache WHERE ns = ? AND key = ?", (ns, key)).fetchone()
-    except sqlite3.Error:
+        if not row or time.time() - row[0] > _ttl_seconds(ttl_hours):
+            return None
+        value = json.loads(row[1])
+        if not isinstance(value, dict):
+            return None
+        value["cache"] = {"hit": True, "stored_at": datetime.fromtimestamp(row[0], timezone.utc).isoformat(timespec="seconds")}
+    except (sqlite3.Error, OSError, ValueError, TypeError, OverflowError):
         return None
-    if not row or time.time() - row[0] > _ttl_seconds(ttl_hours):
-        return None
-    value = json.loads(row[1])
-    value["cache"] = {"hit": True, "stored_at": datetime.fromtimestamp(row[0], timezone.utc).isoformat(timespec="seconds")}
     return value
 
 
@@ -57,10 +67,11 @@ def put(ns: str, key: str, value: Dict[str, Any]) -> None:
     if not path:
         return
     try:
-        with _connect(path) as conn:
+        with closing(_connect(path)) as conn, conn:
             conn.execute(
                 "INSERT OR REPLACE INTO cache (ns, key, stored, value) VALUES (?, ?, ?, ?)",
                 (ns, key, time.time(), json.dumps({k: v for k, v in value.items() if k != "cache"}, ensure_ascii=False)),
             )
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         pass
+

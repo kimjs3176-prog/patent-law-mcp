@@ -111,18 +111,19 @@ def article_code(article: str) -> str:
 
 
 def _format_article(unit: Dict[str, Any]) -> str:
-    lines = [str(unit.get("조문내용", "")).strip()]
-    for para in _as_list(unit.get("항")):
-        if isinstance(para, dict):
-            if para.get("항내용"):
-                lines.append(str(para["항내용"]).strip())
-            for item in _as_list(para.get("호")):
-                if isinstance(item, dict) and item.get("호내용"):
-                    lines.append("  " + str(item["호내용"]).strip())
-                    for sub in _as_list(item.get("목")):
-                        if isinstance(sub, dict) and sub.get("목내용"):
-                            lines.append("    " + str(sub["목내용"]).strip())
-    return "\n".join(l for l in lines if l)
+    lines = []
+
+    def visit(node: Any, kind: str, indent: str) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get(f"{kind}내용"):
+            lines.append(indent + str(node[f"{kind}내용"]).strip())
+        for child_kind, child_indent in (("항", ""), ("호", "  "), ("목", "    ")):
+            for child in _as_list(node.get(child_kind)):
+                visit(child, child_kind, child_indent)
+
+    visit(unit, "조문", "")
+    return "\n".join(lines)
 
 
 def get_law_article(
@@ -147,7 +148,13 @@ def get_law_article(
         if not candidates:
             return {"found": False, "error": f"'{law_name}'에 해당하는 법령을 찾지 못했습니다."}
         compact = re.sub(r"\s+", "", law_name)
-        law = next((c for c in candidates if re.sub(r"\s+", "", c["name"]) == compact), candidates[0])
+        law = next((c for c in candidates if re.sub(r"\s+", "", c["name"]) == compact), None)
+        if law is None:
+            return {
+                "found": False,
+                "error": "정확히 일치하는 법령명이 없습니다. 후보에서 법령명을 확인하십시오.",
+                "candidates": candidates,
+            }
         data = _get_json("lawService.do", {"target": "law", "MST": law["mst"], "JO": jo})
     except LookupError as e:
         return {"found": False, "error": str(e)}
@@ -175,3 +182,4 @@ def get_law_article(
     }
     cache.put("law", cache_key, result)
     return result
+
