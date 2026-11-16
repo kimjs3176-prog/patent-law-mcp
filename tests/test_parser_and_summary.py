@@ -11,6 +11,7 @@ from patent_law_mcp.tools.document_parser import (
     parse_raw_patent_text,
 )
 from conftest import fixture_text
+import pytest
 
 
 def test_gazette_b1_format():
@@ -109,8 +110,33 @@ def test_trl_requires_evidence():
     assert evaluate_commercialization("식품", "prototype")["estimated_trl"] == "TRL 5~6"
 
 
+@pytest.mark.parametrize("outlook", [None, "향후 현장 검증을 추진할 예정이다.", "실증 자료가 없습니다."])
+def test_proposed_trl_without_evidence_remains_unverified(outlook):
+    result = evaluate_commercialization("식품", proposed_trl=9, commercialization_outlook=outlook)
+    assert result["estimated_trl"] is None
+    assert result["proposed_trl"] == 9
+
+
+@pytest.mark.parametrize("claim", ["제1항에 있어서, 온도 센서를 포함하는 장치.",
+                                   "The device of claim 1, comprising a sensor."])
+def test_dependent_only_summary_requests_independent_claim(claim):
+    result = summarize_patent("test", "장치", "센서에 관한 장치이다.", [claim])
+    assert result["claims_overview"]["independent"] == 0
+    assert result["technical_solution"] == ""
+    assert result["workflow_or_components"] == []
+    assert any("독립항 전문" in warning for warning in result["warnings"])
+    assert not any("독립항은" in line for line in result["elevator_pitch_draft"])
+
+
+@pytest.mark.parametrize("value", ["-20℃", "−20℃", "-20~-10℃", "-20–-10℃", "+20℃", "60-75℃", "-0.5°C"])
+def test_temperature_sign_and_range_preserved(value):
+    chips = extract_key_spec_chips(f"시료를 {value}에서 처리한다.")
+    assert chips[0]["value"] == value
+
+
 def test_gazette_holder_address_lines_are_dropped():
     text = fixture_text("gazette_b1.txt").replace(
         "     대한민국(농촌진흥청장)\n", "     대한민국(관리부서:농촌진흥청장)\n     전라북도 전주시 덕진구 농생명로 300\n"
     )
     assert parse_raw_patent_text(text)["applicants"] == ["대한민국(관리부서:농촌진흥청장)"]
+
