@@ -51,7 +51,7 @@ def _present(keyword: str, spec: str) -> str:
     found = False
     for m in re.finditer(re.escape(keyword.lower()), spec):
         found = True
-        window = spec[m.end(): m.end() + 12]
+        window = spec[m.end(): m.end() + 40]  # 같은 절 끝까지 (예: "급속 냉각 설비는 사용하지 않는다")
         window = re.split(r"[.,;\n]|하며|하고|이며", window)[0]
         before = re.split(r"[.,;\n]", spec[max(0, m.start() - 25): m.start()])[-1]
         if not _NEGATION.search(window) and not _NEGATION_BEFORE.search(before):

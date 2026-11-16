@@ -140,3 +140,22 @@ def test_gazette_holder_address_lines_are_dropped():
     )
     assert parse_raw_patent_text(text)["applicants"] == ["대한민국(관리부서:농촌진흥청장)"]
 
+
+
+def test_characterizing_clause_is_element_not_subject():
+    # 실제 등록특허(KR101070281B1) 형식: "~를 포함하고, (특징부)하는 것을 특징으로 하는 X"
+    claim = ("건조부; 열풍주입부; 및 조절부;를 포함하고, 상기 조절부는 상호 교대로 운전을 하면서 "
+             "건조 슬러지가 혼합되는 것을 특징으로 하는 유기성 슬러지의 고정상식 건조장치.")
+    elements, subject = split_claim_elements(claim)
+    assert subject == "유기성 슬러지의 고정상식 건조장치"
+    assert elements[:3] == ["건조부", "열풍주입부", "조절부"]
+    assert elements[3].startswith("[특징부] 상기 조절부는 상호 교대로")
+
+
+def test_pitch_uses_head_phrases_and_skips_scope_sentence():
+    r = summarize_patent(
+        "x", "건조장치", "본 발명은 건조장치에 관한 것이다.",
+        ["투입구가 형성된 건조부; 열풍을 주입하는 열풍주입부;를 포함하는 건조장치."],
+    )
+    assert "건조부, 열풍주입부" in r["elevator_pitch_draft"][1]
+    assert r["primary_effect"]["source"] == "미확인"  # '~에 관한 것이다'는 효과 문장이 아님

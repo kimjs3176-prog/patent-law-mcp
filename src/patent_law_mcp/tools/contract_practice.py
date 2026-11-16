@@ -138,7 +138,7 @@ def design_licensing_terms(
         "financial_terms": financial,
         "required_procedures": procedures,
         "mandatory_practice_clauses": clauses,
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("요율"),
     }
 
 
@@ -275,5 +275,5 @@ def review_licensing_contract(
         "compliance_summary": summary,
         "checklist": checklist,
         "limitations": "문장 단위 키워드 점검입니다. 조항 간 관계·예외 조항·별지 내용은 판단하지 못합니다.",
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("계약서"),
     }

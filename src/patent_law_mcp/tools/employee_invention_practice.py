@@ -15,6 +15,12 @@ from patent_law_mcp.policies.policy_manager import PolicyManager, ProfileName, p
 from patent_law_mcp.tools.contract_practice import require_choice
 
 
+def _cite_paragraph(citation: str, paragraph: str) -> str:
+    """'발명진흥법 제13조, 같은 법 시행령 제7조' + '제2항' -> '발명진흥법 제13조 제2항, 같은 법 시행령 제7조'"""
+    head, sep, rest = citation.partition(", ")
+    return f"{head} {paragraph}{sep}{rest}"
+
+
 def process_invention_disclosure(
     title: str,
     inventor_names: Annotated[List[str], Field(min_length=1)],
@@ -63,10 +69,10 @@ def process_invention_disclosure(
             "novelty_risk": novelty,
             "succession_rule": (
                 f"예약승계 규정 있음: 권리는 발명 완성 때부터 사용자에게 승계됩니다. 승계하지 않으려면 통지를 받은 날부터 "
-                f"{months}개월 이내에 발명자에게 알려야 합니다 ({art['succession_notice']} 제1항)."
+                f"{months}개월 이내에 발명자에게 알려야 합니다 ({_cite_paragraph(art['succession_notice'], '제1항')})."
                 if has_advance_succession_rule
                 else f"예약승계 규정 없음: 통지를 받은 날부터 {months}개월 이내에 승계 여부를 서면으로 알려야 하며, "
-                f"알리지 않으면 승계를 포기한 것으로 봅니다 ({art['succession_notice']} 제2항·제3항)."
+                f"알리지 않으면 승계를 포기한 것으로 봅니다 ({_cite_paragraph(art['succession_notice'], '제2항·제3항')})."
             ),
             "administrative_steps": [
                 f"1. 발명 완성 사실 서면 통지 접수 ({art['invention_report']})",
@@ -77,7 +83,7 @@ def process_invention_disclosure(
                 ),
                 f"3. 승계 시 출원 진행, 보상은 {pm.metadata['notice_name']} 기준 ({art['disposal_compensation']})",
             ],
-            "legal_audit_basis": pm.audit_block(),
+            "legal_audit_basis": pm.audit_block("승계"),
         }
 
     reg = pm.section("registration_compensation")
@@ -93,7 +99,7 @@ def process_invention_disclosure(
             f"2. {authority} 국유특허 출원 절차에 따라 출원 의뢰",
             f"3. 등록 시 등록보상금 지급 품의 (특허 {reg['patent']:,}원, {art['registration_compensation']})",
         ],
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("등록보상금"),
     }
 
 
@@ -225,7 +231,7 @@ def calculate_disposal_compensation(
             "올해 이미 지급된 직무발명보상금(비과세 적용분) 확인",
             "보상금 감액 사유 해당 여부 점검",
         ],
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("처분보상금", "보상 비율", "특수관계"),
     }
 
 
@@ -265,7 +271,7 @@ def evaluate_unutilized_free_license(
             "eligible_for_free_license": False,
             "reason": reason,
             "alternatives": f"유상 통상실시 또는 무상 처분 사유({art['free_disposal_grounds']}) 해당 여부를 검토하십시오.",
-            "legal_audit_basis": pm.audit_block(),
+            "legal_audit_basis": pm.audit_block("무상실시"),
         }
 
     cautions = []
@@ -297,7 +303,7 @@ def evaluate_unutilized_free_license(
             "공동권리자가 있으면 통상실시 서면 동의서",
         ],
         "licensee_limit_note": f"신청자가 많으면 사업계획의 실현 가능성 등으로 실시자 수를 제한할 수 있음 ({art['licensee_limit']})",
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("무상실시"),
     }
 
 
@@ -373,5 +379,5 @@ def evaluate_exclusive_renewal(
             f"갱신 시에도 최소실시료({min_royalty:,}원 이상, {art['exclusive_minimum_royalty']} 제2항) 적용. "
             "최소실시료·전용실시기간 등은 협의하여 기존 계약과 달리 정할 수 있음 (제10조 제5항)"
         ),
-        "legal_audit_basis": pm.audit_block(),
+        "legal_audit_basis": pm.audit_block("갱신"),
     }

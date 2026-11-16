@@ -150,3 +150,19 @@ def test_targeting_has_no_fabricated_figures_and_filters_size():
     assert "18개월" not in str(r)
     unknown = find_target_licensees_by_patent("기타", None)
     assert unknown["matched_ksic_codes"] == []
+
+
+def test_scope_negation_reaches_end_of_clause():
+    claim = "쌀가루를 증자하는 단계; 및 펀칭된 떡을 급속 냉각하는 단계;를 포함하는 떡의 제조방법."
+    spec = "쌀가루를 쪄서 떡을 만들고 상온에서 자연 냉각한다. 급속 냉각 설비는 사용하지 않는다."
+    r = verify_tech_transfer_scope_match(claim, spec)
+    assert "급속" in r["verified_elements"][1]["negated_keywords"]
+    assert r["verified_elements"][1]["is_matched"] is False
+
+
+def test_audit_notes_are_scoped_to_the_tool():
+    review = review_licensing_contract("계약기간은 3년으로 한다.")
+    assert review["legal_audit_basis"]["unverified_items"] == []
+    assert "/" not in review["legal_audit_basis"]["policy_file"]
+    comp = calculate_disposal_compensation(1_000_000, [{"name": "A", "share_rate": 1.0}])
+    assert any("처분보상금" in n for n in comp["legal_audit_basis"]["unverified_items"])

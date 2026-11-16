@@ -184,14 +184,21 @@ class PolicyManager:
         meta = self.metadata
         return f"{meta['notice_id']} ({meta['effective_date']} 시행 기준)"
 
-    def audit_block(self) -> Dict[str, Any]:
-        """도구 출력에 붙이는 근거·검증 상태 메타데이터"""
+    def audit_block(self, *topics: str) -> Dict[str, Any]:
+        """도구 출력에 붙이는 근거·검증 상태 메타데이터.
+
+        topics를 주면 그 단어가 들어간 미확인 쟁점만 담습니다 (관련 없는 쟁점이 답변에 섞이지 않도록).
+        정책 파일은 전체 경로 대신 파일 이름만 표시합니다.
+        """
+        notes = self.verification_notes
+        if topics:
+            notes = [n for n in notes if any(t in n for t in topics)]
         return {
             "profile": self.profile,
             "notice": self.audit_trail_basis,
             "parent_regulation": self.metadata["parent_regulation"],
-            "policy_file": str(self.path),
-            "unverified_items": self.verification_notes,
+            "policy_file": self.path.name,
+            "unverified_items": notes,
         }
 
     def require_national(self, feature: str) -> None:
