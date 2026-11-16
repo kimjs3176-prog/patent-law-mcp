@@ -17,6 +17,8 @@ import sys
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import httpx
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
@@ -112,6 +114,8 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
         await step(s, "권리범위 1차 대조", "verify_tech_transfer_scope_match",
                    {"claim_text": patent["claims"][0], "target_product_spec": "슬러지를 투입구로 넣어 열풍주입부의 열풍으로 건조하고 배출구로 내보내는 건조부를 갖춘 설비"},
                    lambda e, d: ok(not e and "/" in d["matched_elements"], str(d)[:120]))
+    else:
+        results.append((s, "권리범위 1차 대조", "SKIP", "선행 조회에서 청구항을 확보하지 못함"))
     await step(s, "전용실시 계약조건", "design_licensing_terms",
                {"patent_id": "10-1070281", "license_type": "exclusive", "company_scale": "sme", "expected_sales_annual": 500_000_000},
                lambda e, d: ok(not e and d["financial_terms"]["lump_sum_fee_krw"] >= 3_000_000
@@ -222,6 +226,27 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     await step(s, "민간 기업 신고 (예약승계)", "process_invention_disclosure",
                {"title": "센서", "inventor_names": ["A"], "profile": "private_company"},
                lambda e, d: ok(not e and "발명 완성 때부터 사용자에게 승계됩니다" in d["succession_rule"], str(d)[:120]))
+    # 12. 근거 부족·불완전 입력에서 답변이 과도하게 단정되지 않는지 확인
+    s = "12. 답변 품질"
+    for outlook in (None, "향후 현장 검증을 추진할 예정이다."):
+        args = {"technology_domain": "식품", "proposed_trl": 9}
+        if outlook:
+            args["commercialization_outlook"] = outlook
+        await step(s, "근거 없는 TRL" + (" (계획만)" if outlook else ""), "evaluate_commercialization", args,
+                   lambda e, d: ok(not e and d["estimated_trl"] is None and d.get("proposed_trl") == 9, str(d)[:180]))
+    await step(s, "종속항만 있는 요약", "summarize_patent",
+               {"patent_id": "test", "title": "센서 장치", "abstract": "센서 장치에 관한 발명이다.",
+                "claims": ["제1항에 있어서, 온도 센서를 포함하는 장치."]},
+               lambda e, d: ok(not e and d["claims_overview"]["independent"] == 0
+                               and not d["workflow_or_components"] and d["warnings"]
+                               and not any("독립항은" in p for p in d["elevator_pitch_draft"]), str(d)[:180]))
+    await step(s, "음수 온도 보존", "summarize_patent",
+               {"patent_id": "test", "title": "냉각 방법", "abstract": "-20℃에서 냉각한다.",
+                "claims": ["시료를 -20℃에서 냉각하는 단계;를 포함하는 방법."]},
+               lambda e, d: ok(not e and any(c["value"] == "-20℃" for c in d["key_spec_chips"]), str(d)[:180]))
+    await step(s, "구성요소 명시적 부정", "verify_tech_transfer_scope_match",
+               {"claim_text": "센서와 모터를 포함하는 장치.", "target_product_spec": "센서는 있음. 모터는 없음."},
+               lambda e, d: ok(not e and d["matched_elements"] == "0/1", str(d)[:180]))
     return results
 
 
@@ -256,16 +281,19 @@ async def http_session() -> List[Result]:
             except OSError:
                 time.sleep(0.2)
         url = f"http://127.0.0.1:{port}/mcp"
-        async with streamablehttp_client(url, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
+        # 로컬 테스트 서버에는 시스템 프록시를 적용하지 않는다.
+        def local_client(**kwargs):
+            return httpx.AsyncClient(trust_env=False, **kwargs)
+
+        async with streamablehttp_client(url, headers={"Authorization": f"Bearer {token}"},
+                                        httpx_client_factory=local_client) as (read, write, _):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 n = len((await session.list_tools()).tools)
                 _, data = await call(session, "calculate_patent_term", {"application_date": "2010-06-30"})
                 results.append(("11. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 26 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
-        import httpx
-
         r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-                       headers={"accept": "application/json, text/event-stream"})
+                       headers={"accept": "application/json, text/event-stream"}, trust_env=False)
         results.append(("11. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))
         bad = subprocess.run([sys.executable, "-m", "patent_law_mcp.server", "--transport", "streamable-http", "--host", "0.0.0.0"],
                              env={k: v for k, v in env.items() if k != "PATENT_LAW_MCP_TOKEN"}, capture_output=True, text=True, timeout=20)
@@ -280,7 +308,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true")
     args = ap.parse_args()
-    results = asyncio.run(stdio_session(args.offline)) + asyncio.run(http_session())
+    results = asyncio.run(stdio_session(args.offline))
+    try:
+        results += asyncio.run(http_session())
+    except Exception as e:
+        results.append(("11. HTTP 배포", "HTTP 시나리오 실행", "FAIL", type(e).__name__))
     width = max(len(r[1]) for r in results)
     for scenario, name, status, note in results:
         print(f"{status:4}  {scenario:<14} {name:<{width}}  {note}")
@@ -291,3 +323,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

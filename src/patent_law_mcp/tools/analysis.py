@@ -113,7 +113,8 @@ def ground_patent_applications(
     }
 
 
-_RANGE = r"\d+(?:\.\d+)?(?:\s*[~∼～\-]\s*\d+(?:\.\d+)?)?"
+_NUMBER = r"[+\-−]?\d+(?:\.\d+)?"
+_RANGE = rf"{_NUMBER}(?:\s*[~∼～\-–]\s*{_NUMBER})?"
 _SPEC_PATTERNS = [
     ("온도 조건", re.compile(rf"({_RANGE})\s*(℃|°C|도씨)")),
     ("파장", re.compile(rf"({_RANGE})\s*(nm)\b")),
@@ -197,10 +198,12 @@ def summarize_patent(
     clean_claims = [c.strip() for c in claims if c and c.strip()]
     active = [c for c in clean_claims if not is_deleted_claim(c)]
     independent = [c for c in active if not is_dependent_claim(c)]
-    main_claim = independent[0] if independent else (active[0] if active else "")
+    main_claim = independent[0] if independent else ""
 
     warnings: List[str] = []
-    if not main_claim:
+    if active and not independent:
+        warnings.append("독립항이 없어 권리범위 요약을 만들지 않았습니다. 종속항이 인용하는 독립항 전문을 입력하십시오.")
+    elif not main_claim:
         warnings.append("유효한 청구항이 없어 권리범위 요약을 만들지 못했습니다.")
     if not abstract.strip():
         warnings.append("초록이 비어 있습니다.")
@@ -300,6 +303,8 @@ def evaluate_commercialization(
         "target_market": target_market or "미지정",
         "key_checkpoints": checkpoints,
     }
+    if proposed_trl is not None:
+        result["proposed_trl"] = proposed_trl
 
     if commercialization_outlook:
         text = commercialization_outlook
@@ -323,7 +328,7 @@ def evaluate_commercialization(
             })
         else:
             result.update({
-                "estimated_trl": f"TRL {proposed_trl}" if proposed_trl else None,
+                "estimated_trl": None,
                 "trl_description": "상용화전망에서 현재 도달 단계 서술(실험실·파일럿·양산 준비 등)을 찾지 못했습니다.",
             })
         result["stage_rule"] = "patent-summary-wizard trlConsistency.ts (현재·과거로 서술된 최고 단계, 목표·예정·경쟁 기술 제외)"
@@ -331,7 +336,7 @@ def evaluate_commercialization(
 
     if evidence_level == "unknown":
         result.update({
-            "estimated_trl": f"TRL {proposed_trl}" if proposed_trl else None,
+            "estimated_trl": None,
             "trl_description": "TRL 미산정: 실증 근거(시제품·현장실증·판매 실적 등) 정보가 없습니다."
             if not proposed_trl
             else "제시된 TRL을 확인할 근거 정보가 없습니다.",
@@ -349,3 +354,4 @@ def evaluate_commercialization(
     if proposed_trl is not None and not lo <= proposed_trl <= hi:
         result["proposed_trl_note"] = f"제시된 TRL {proposed_trl}은(는) 근거 수준({_trl_range(lo, hi)})과 맞지 않습니다."
     return result
+
