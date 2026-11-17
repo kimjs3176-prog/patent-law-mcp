@@ -50,7 +50,7 @@ docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_A
 
 | 환경변수 | 쓰는 도구 | 발급 |
 |:---|:---|:---|
-| `KIPRIS_API_KEY` | 특허 검색, 출원번호 조회, KIPRIS 공식 서지 | plus.kipris.or.kr (특허·실용 공개·등록공보 서비스) |
+| `KIPRIS_API_KEY` | 특허 검색, 출원번호 조회, KIPRIS 공식 서지 | plus.kipris.or.kr (특허·실용 공개·등록공보 서비스) — 발급·설정·점검: [docs/KIPRIS_API_KEY.md](docs/KIPRIS_API_KEY.md) |
 | `LAW_OC` | 법령 검색·조문 조회 | open.law.go.kr 회원가입 후 Open API 신청 (무료). **신청 시 호출 서버의 IP·도메인을 등록해야 합니다** |
 
 키가 없으면 해당 도구는 발급 방법을 안내하고, 등록·공개번호 조회는 Google Patents 공개 웹으로 동작합니다.
