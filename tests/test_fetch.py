@@ -127,3 +127,14 @@ def test_inspect_summarizes_verified_patent(fake_http):
     r = inspect_and_summarize_by_appno("10-1070281")
     assert r["summary"]["title"] == "유기성 슬러지의 고정상식 건조장치"
     assert r["commercialization_trl"]["estimated_trl"] is None
+
+
+def test_kipris_quota_error_is_reported_as_key_error(fake_http, monkeypatch):
+    monkeypatch.setenv("KIPRIS_API_KEY", "secret-value")
+    fake_http.routes["kipris.or.kr"] = (200, b"<response><header><successYN>N</successYN><resultCode>22</resultCode>"
+                                              b"<resultMsg>LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.</resultMsg>"
+                                              b"</header><body/></response>")
+    r = fetch_patent_smart("10-2008-0119257")
+    assert r["found"] is False
+    assert "인증키·호출 한도 오류" in r["attempts"][0]["result"] and "LIMITED NUMBER" in r["attempts"][0]["result"]
+    assert "secret-value" not in str(r)

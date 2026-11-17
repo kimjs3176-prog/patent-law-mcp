@@ -222,9 +222,30 @@ def _text(el: Optional[ET.Element], path: str) -> str:
     return (n.text or "").strip() if n is not None and n.text else ""
 
 
+class KiprisKeyError(LookupError):
+    """인증키가 거부되었거나 일일 호출 한도를 다 썼습니다. 이후 호출도 같은 이유로 실패합니다."""
+
+
+# KIPRIS는 오류도 HTTP 200과 <successYN>N</successYN>로 답한다. 아래 resultCode는 인증키·호출 한도 오류다.
+# 포팅 원본: patent-video-skill/scripts/kipris.py (_KEY_CODES, _KEY_MSG, api_check)
+_KEY_CODES = {"20", "21", "22", "30", "31", "32", "33"}
+_KEY_MSG = re.compile(r"KEY|LIMITED_NUMBER|ACCESS_DENIED|EXPIRED|UNREGISTERED_IP|UNSIGNED|서비스\s*키|인증\s*키|트래픽|한도", re.I)
+
+
+def kipris_api_check(root: ET.Element) -> None:
+    """오류 응답이면 예외를 냅니다 (인증키·한도 오류는 KiprisKeyError). item이 없는 것만으로는 오류로 보지 않습니다."""
+    code = _text(root, ".//header/resultCode") or _text(root, ".//returnReasonCode")  # 뒤쪽: data.go.kr 게이트웨이 형식
+    if _text(root, ".//header/successYN").upper() != "N" and not _text(root, ".//returnReasonCode"):
+        return
+    msg = _text(root, ".//header/resultMsg") or _text(root, ".//returnAuthMsg") or _text(root, ".//errMsg")
+    err = f"{code} {msg}".strip() or ET.tostring(root, encoding="unicode")[:300]
+    raise (KiprisKeyError if code in _KEY_CODES or _KEY_MSG.search(msg) else LookupError)(err)
+
+
 def parse_kipris_xml(raw: bytes) -> Dict[str, Any]:
     """KIPRIS getBibliographyDetailInfoSearch 응답 XML을 해석합니다 (patent-video-skill kipris.parse와 동일 경로)."""
     root = ET.fromstring(raw)
+    kipris_api_check(root)
     item = root.find(".//item")
     if item is None:
         msg = _text(root, ".//resultMsg") or _text(root, ".//errMsg") or "응답에 특허 정보(item)가 없습니다."
@@ -267,8 +288,12 @@ def fetch_from_kipris_api(application_digits: str, service_key: str) -> Tuple[Op
         data = parse_kipris_xml(resp.content)
     except ET.ParseError:
         return None, "KIPRIS 응답을 XML로 해석하지 못했습니다."
+    except KiprisKeyError as e:
+        msg = str(e).replace(service_key, "***") if service_key else str(e)
+        return None, f"KIPRIS 인증키·호출 한도 오류: {msg} (KIPRIS_API_KEY를 확인하거나 일일 한도가 초기화된 뒤 다시 조회하십시오)"
     except LookupError as e:
-        return None, f"KIPRIS: {e} (인증키·출원번호를 확인하십시오)"
+        msg = str(e).replace(service_key, "***") if service_key else str(e)
+        return None, f"KIPRIS: {msg} (인증키·출원번호를 확인하십시오)"
 
     if data["_check"]["application"] != application_digits:
         return None, f"KIPRIS가 다른 출원번호({data['_check']['application'] or '없음'})를 반환해 결과를 버렸습니다."

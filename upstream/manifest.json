@@ -5,8 +5,8 @@
       "name": "patent-summary-wizard",
       "repo": "kimjs3176-prog/patent-summary-wizard",
       "branch": "main",
-      "synced_commit": "cbe39b54dd31d0f915e116ebef27e953123477cf",
-      "synced_at": "2026-11-08",
+      "synced_commit": "59ad0eeb939cbda44b37293441e692329625c139",
+      "synced_at": "2026-11-15",
       "files": [
         {
           "path": "supabase/functions/summarize-patent/summaryGrounding.ts",
@@ -138,8 +138,8 @@
       "name": "patent-video-skill",
       "repo": "kimjs3176-prog/patent-video-skill",
       "branch": "main",
-      "synced_commit": "29b2b41c5274c45279085ebcdc2a281bba206a75",
-      "synced_at": "2026-11-08",
+      "synced_commit": "6d4ae525aa08e729b4ff61e7b95da093830fd516",
+      "synced_at": "2026-11-15",
       "files": [
         {
           "path": "references/CONTENT_SPEC.md",
@@ -147,7 +147,7 @@
           "ported_to": [
             "src/patent_law_mcp/upstream/video_signature.py"
           ],
-          "sha256": "e9955b7fd50fbe2fb9145d4f4b541726d364245dc3b68c0f77410cb2d689b5e2"
+          "sha256": "d83560aa92c516e3366b6ba73a565bcbee99f9259c976fed3d2ad1ffd1b0893b"
         },
         {
           "path": "scripts/kipris.py",
@@ -156,7 +156,7 @@
             "src/patent_law_mcp/upstream/gazette_holders.py",
             "src/patent_law_mcp/tools/kipris_connector.py"
           ],
-          "sha256": "a9412731ca5df96ad0ff96452190d4c75da11d5e245c0553b6a170c29acbb5ed"
+          "sha256": "14db70a488036fda5e188a9cafb9460bdca85f94c8383244d66a56dac9a69c9e"
         }
       ],
       "watch": [

@@ -20,7 +20,7 @@
    목록과 같은 순서로 나타난다. 도면을 Read로 직접 열어, 부호의 지시선을 따라간 끝 **부품 위**(부호 글자가 아니라)를 찍는다.
    확신이 없는 부품은 x·y를 빼면 표식만 생략된다(틀린 표식보다 낫다). 시그니처 loop의 callouts와 같은 도면이면 같은 좌표를 쓴다.
    블록도·순서도처럼 상자 안에 글자가 있는 도면은 상자 오른쪽 위 모서리 안쪽에 찍어 글자를 가리지 않게 한다.
-   찍는 방법은 `references/FIGURE_ANALYSIS.md`(스킬) — `python -I tools/figmap.py <파일>`이 부호 대조표와 10×10 격자 도면을 만들어 준다.
+   찍는 방법은 `tools/FIGURE_ANALYSIS.md`(setup이 스킬의 `references/`에서 복사) — `python -I tools/figmap.py <파일>`이 부호 대조표와 10×10 격자 도면을 만들어 준다.
    흑백 선 도면은 빌드 때 선이 자동 추출되어 그려지므로(`figtrace.py`), 구성 장면에는 부호가 잘 보이는 **선 도면**을 고르는 편이 좋다.
 5. 수치 데이터가 있으면 proof.kind = "stats", items 1~3개. 대조군 대비 막대(bars)는 표에 있는 값만. 그래프만 있고 수치가 본문에 없으면 그 막대는 넣지 않는다.
 6. 명세서 내부 모순(단위 오기 등)이 있으면 더 타당한 쪽을 쓰고 `"notes"` 필드에 한 줄 기록.
@@ -81,12 +81,12 @@
 
 ## 나레이션 대본 (narration, 권장 — 모든 렌더링에 기본으로 들어감, 끄려면 `--no-narrate`)
 화면 글자(개조식)를 그대로 읽지 말고, 같은 사실을 **말하는 문장**으로 쓴다. 장면마다 1~2문장.
-엔딩(outro)은 항상 음성 없이 음악만 — `outro`를 써도 읽지 않는다. 음성은 Google Chirp 3 HD(키가 있을 때) 또는 선희(ko-KR-SunHiNeural). 화면용 기호는 합성 직전에 읽는 말로 바뀌지만(`~`→"에서", `℃`→"도", `·`→쉼표), 대본은 처음부터 말로 쓴다.
+엔딩(outro)은 항상 음성 없이 화면만 — `outro`를 써도 읽지 않는다. 음성은 Google Chirp 3 HD(키가 있을 때) 또는 선희(ko-KR-SunHiNeural). 화면용 기호는 합성 직전에 읽는 말로 바뀌지만(`~`→"에서", `℃`→"도", `·`→쉼표), 대본은 처음부터 말로 쓴다.
 - 음절 한도(공백 제외): hook 30 · overview 30 · process 45 · proof 50 · figures 25 · features 30 · apps 30 · outro 25.
   넘치면 템플릿별로 빨리 읽히거나 뒤 문장부터 잘리므로, **문장 하나만 남아도 말이 되게** 핵심을 앞 문장에 둔다.
 - 수치는 명세서 그대로, 읽기 쉽게: `0.6–1.1 MPa` → "0.6에서 1.1 메가파스칼", `%` → "퍼센트", `℃` → "도". 계산한 배수 금지.
 - figures: 실제 도면 종류를 확인했을 때만 구체적으로("공정도와 사진"), 아니면 "명세서 도면으로 구조를 살펴봅니다." 정도.
-- outro: 읽지 않는다(엔딩은 음악만). 면책 문구도 읽지 않는다(화면 표기).
+- outro: 읽지 않는다(엔딩은 화면만). 면책 문구도 읽지 않는다(화면 표기).
 - 기관명·코드네임은 화면에 있으므로 반복하지 않아도 된다. 과장·광고성 표현("획기적", "최고") 금지.
 - **자연스러운 말투**(방송 내레이션처럼):
   - 이어 주는 말로 흐름을 만든다: "먼저", "~한 다음", "마지막으로", "그 결과", "덕분에".
@@ -100,7 +100,11 @@
   - 쓴 뒤 소리 내어 읽어 본다. 화면 글자를 읽는 것처럼 들리면 다시 쓴다.
   - 예) ✗ "감자를 썰어 전분을 씻고, 식초 물에 80에서 100도로 데칩니다. 말린 뒤 한 번 튀기고, 영하 60도 아래로 급속 냉각한 다음 다시 튀겨 완성합니다."
     ○ "먼저 감자를 썰어 물에 담가 전분을 빼고, 식초를 푼 물에 살짝 데칩니다. 물기를 말려 한 번 튀긴 다음, 아주 차갑게 급속 냉각하고, 마지막으로 한 번 더 튀겨내면 완성입니다."
-- 음성은 보통 속도(+0%)로 먼저 읽히고, 장면에 안 들어갈 때만 +6·+12·+18%로 빨라진다. 장면 길이(초) × 약 6음절을 넘기지 않으면 보통 속도로 들어간다.
+- 음성은 보통 속도(+0%)로 먼저 읽히고, 장면에 안 들어갈 때만 +6·+12·+18%로 빨라진다(최대 +18%). 그래도 넘치면 뒤 문장부터 빠지고, 한 문장도 안 들어가면
+  그 장면은 음성 없이 렌더된다(`produce.log`에 `NO-FIT` 경고). 음성이 들어갈 시간은 장면 길이 − 약 1.3초(시작·끝 여유와 다음 장면과의 겹침)이고,
+  선희 음성은 말하는 동안 초당 약 6음절이지만 클립 앞뒤 무음(약 1초)과 문장 사이 쉼(약 1초)·쉼표 쉼(약 0.3초)까지 치면 초당 약 5음절이다.
+  A~I의 분량은 위 섹션별 음절 한도를 따른다(`validate.py`가 검사). B·C·F 숏폼은 장면이 짧아 한도 안의 줄도 다 들어가지 않을 수 있으니,
+  렌더 뒤 `produce.log`의 `NO-FIT`과 `narration.txt`의 `(shortened)` 줄을 보고 그 줄을 줄인다. 시그니처(S)는 장면 길이로 분량을 정한다(아래 `narration`).
 - 없으면 내용 필드로 단순 대본을 자동 생성한다(품질 낮음 → 대량 제작 때도 작성 권장).
 
 ## 특징 구조화 (시그니처 설계 — 콘텐츠보다 먼저)
@@ -147,7 +151,8 @@
   fry(유탕) · freeze(동결·냉각) · ferment(발효) · mix(혼합·배합) · extract/filter(추출·여과·농축) · puff(팽화) · mash(당화) ·
   cold(저온 숙성 → 완제품 잔) · mill(분쇄·제분·도정) · form(성형·분할·고형화·겔화) · inoculate(접종) · sterilize(살균·멸균) ·
   coat(코팅·분무·도포) · pack(포장·충진·실링) · concentrate(농축·증발) · harvest(수확·채취) · extrude(압출) ·
-  bake(굽기) · sprout(발아) · grow(재배·생육) · wash(세척·박피) · char(탄화·열분해) · thaw(해동) · light(광 조사·LED) · sonicate(초음파). 없으면 단계 이름으로 아이콘을 고른다.
+  bake(굽기) · sprout(발아) · grow(재배·생육) · wash(세척·박피) · char(탄화·열분해) · thaw(해동) · light(광 조사·LED) · sonicate(초음파).
+  **key는 단계마다 필수**(빠지거나 목록에 없으면 validate/sigcheck 오류) — 목록에 꼭 맞는 그림이 없으면 재료가 겪는 가장 가까운 변화를 고른다.
   선택: 명세서가 기존 공정의 한 단계를 없앤다고 **명시**할 때만 `conventional` · `removed` · `removed_note` · `route_note` · `route_label`
   (공정 비교 장면이 추가되고, 없으면 강점 장면이 들어간다).
 - `loop` (장치): `figure` · `figcap` · `parts_title`(선택) · `callouts[{ref, n, d, x, y}]` 3~5개 ·
@@ -158,18 +163,21 @@
   선택 키: `source`(근거 표기), `flows[].legend: false`(같은 이름 흐름을 범례에 한 번만), `run.drip` `[x, y]` + `drip_label`(응축수처럼 맺혀 떨어지는 방울),
   `glows[]`는 `x, y` 대신 `ref`(그 부호의 callout 자리)나 `at_flow`(0부터 센 흐름 번호, 그 흐름의 두 번째 점)로 자리를 줄 수 있다.
   `path.points[].ref`는 도면 부호 대신 순서도 단계 번호(S210 등)도 된다.
-- `formula` (조성물·추출물·기능성 소재): `mix_title`(선택) · `components[{n, v, u?, role?}]` 2~6개(v = 명세서의 비율·함량 숫자, 상대 크기로 용기를 채움) ·
+- `formula` (조성물·추출물·기능성 소재): `mix_title`(선택) · `components[{n, v, u?, role?, color?}]` 2~6개(v = 명세서의 비율·함량 숫자, 상대 크기로 용기를 채움;
+  `color`는 층·견본 색을 정할 때만, `#RRGGBB` 16진 색) ·
   `base_note`(비율 근거) · `effects[{l, control, treated, unit?, better: "up"|"down", note?}]` 1~4개(대조군·처리군 값은 명세서 그대로, 배수·감소율을 새로 계산하지 않음) ·
   `effects_title` · `effects_note`(자료 출처) · `control_label`/`treated_label`(선택, 기본 대조군/처리군). 장면: teaser · mix · effect · features · apps.
 - `lineage` (품종·선발 균주): `variety`(신품종·균주 이름) · `cross{mother, father}`(교배) 또는 `source`(분리원·선발 모집단) ·
   `steps[{gen, l, year?}]` 3~6개(F1·F2~F5·생산력 검정·지역 적응·품종 등록 / 분리·스크리닝·동정 …, 마지막이 신품종) · `tree_title`(선택) ·
   `check`(대비 품종·대조 균주) · `traits[{l, new, check, unit?, better}]` 1~5개(명세서 특성 조사표 값 그대로) · `traits_title` · `traits_note`.
   장면: teaser · tree · traits · features · apps.
-- `sequence` (프라이머·진단): `problem{title, cards[{v, l, s}] 2~3개, src}` · `target` · `target_note` · `layout`(표적 부위 순서) ·
-  `primers[{id, seq, regions}]`(서열번호의 실제 염기, 8개 이하) · `primers_title`/`primers_cap`(선택) · `field`(칩 2~4개) ·
-  `result` 중 하나: `{kind: "tubes", tubes[{l, pos}], pos_color, neg_color, note, cap}`(육안 색 판독) ·
-  `{kind: "gel", ladder[bp], lanes[{l, bands[bp]}], note, cap}`(전기영동) ·
-  `{kind: "ct", sensitivity/specificity[{l, ct}], *_title, *_note}` + 최상위 `cycles` · `cutoff`(실시간 PCR).
+- `sequence` (프라이머·진단): `problem{title, cards[{v, l, s}] 2~3개, src}` · `target` · `target_note` · `layout`(표적 부위 순서, 2곳 이상) ·
+  `primers[{id, seq, regions}]`(서열번호의 실제 염기를 대문자로, 1~8개; `regions`는 `layout`에 있는 이름만) · `primers_title`/`primers_cap`(선택) · `field`(칩 2~4개) ·
+  `result` 중 하나: `{kind: "tubes", tubes[{l, pos}], pos_color, neg_color, note, cap}`(육안 색 판독. 튜브 3~6개, 양성·음성이 모두 있어야 함.
+  `pos_color`·`neg_color`는 `#RRGGBB` 16진 색만 — 명세서의 색 이름을 바꿔 적는다, 예: 보라 `#8e5bd6` · 하늘 `#56b8e6` · 노랑 `#f2cc60`.
+  "보라색" 같은 색 이름은 검게 그려지므로 오류로 막는다) ·
+  `{kind: "gel", ladder[bp], lanes[{l, bands[bp]}], note, cap}`(전기영동. 래더 3개 이상, 레인 3~8개, 밴드는 래더 범위의 ×0.8~1.2 안) ·
+  `{kind: "ct", sensitivity/specificity[{l, ct}], *_title, *_note}` + 최상위 `cycles` · `cutoff`(실시간 PCR. 넷 다 필요).
   선택: `probe{seq, dye, sybr_pos{l, ct}, sybr_ntc[], pos[{l, ct}], ntc_n, left_title, right_title}`(프로브 비교 장면).
 - `claim` (범용 — 다른 유형이 맞지 않는 모든 특허): 독립항의 구조 자체를 움직인다. **값은 등록 청구범위(biblio.json `claims`)가 먼저**, 없으면 공보 청구범위.
   `claim{no, preamble, elements[{n, d, ref?, x?, y?}], feature{idx, l}}` — `preamble`은 전제부(청구 대상, 짧게: "항원 단백질"),
@@ -190,36 +198,30 @@
   | loop `run.steps` | 3~5 | `n` 9 · `d` 18 |
   | loop `run.logic` / `rules` | 4 / 1~2 | 노드 8 · 규칙 22 |
   | loop `path.points` | 3~5 | `n` 12 · `d` 22 |
-  | sequence `problem.cards` · `primers` · `field` | 2~3 · ≤8 · 2~4 | 카드 `l` 14 · `s` 20 |
+  | sequence `problem.cards` · `primers` · `field` | 2~3 · 1~8 · 2~4 | 카드 `l` 14 · `s` 20 |
+  | sequence `layout` · `result.tubes` · `result.ladder` / `lanes` | ≥2 · 3~6(양성·음성 모두) · ≥3 / 3~8(밴드는 래더 범위 ×0.8~1.2 안) | 색 `#RRGGBB` |
   | formula `components` / `effects` | 2~6 / 1~4 | 성분 `n` 14 · `role` 18 · 효능 `l` 10 · `note` 12 |
   | lineage `steps` / `traits` | 3~6 / 1~5 | `gen` 8 · `l` 14 · 형질 `l` 10 · 품종명 10 |
   | claim `elements` / `deps` | 3~5 / 2~5 | `preamble` 14 · 구성 `n` 10 · `d` 20 · `feature.l` 24 · 종속 `l` 16 · `evidence.l` 12 · 라벨 10 · `src` 16 |
   | `title`·`parts_title`·`run.title`·`path.title` | — | `|`로 두 덩이, 합쳐 22 이내(`|` 뒤가 강조색) |
-- **장면과 길이**(나레이션 키 = 장면, 6초 × 약 6음절 = 28음절 식으로 쓴다. 엔딩은 읽지 않음):
+- **장면과 길이**(초. 나레이션 키 = 장면. 음성은 장면 길이 − 약 1.3초 안에 들어가야 하므로 6초 장면이면 약 20음절, 아래 `narration` 참고. 엔딩은 읽지 않음):
   - journey: teaser 6 · (route 7.5, 공정 편집이 있을 때) · journey 2.6+2.7×단계 수(최소 14) · proof 12 · (features 7, 공정 편집이 없을 때) · apps 6.5
   - loop: teaser 6 · parts 2.4+1.5×부품 수(최소 8) · run 13 · (path 8.5, 있을 때) · features 7 · apps 6.5 — **proof 장면은 없다**(써도 읽히지 않음)
   - formula: teaser 6 · mix 2.8+1.7×성분 수(9~13) · effect 3+1.8×효능 수(8.5~12) · features 7 · apps 6.5
   - lineage: teaser 6 · tree 3.2+1.6×단계 수(9~13) · traits 3+1.6×형질 수(8.5~12) · features 7 · apps 6.5
-  - claim: teaser 6 · anatomy 3+1.8×구성 수(9~13) · tree 3+1.4×종속항 수(+1.6, evidence가 있을 때; 8~12) · features 7 · apps 6.5 (전체 41~47초)
+  - claim: teaser 6 · anatomy 3+1.8×구성 수(9~13) · tree 3+1.4×종속항 수(+1.6, evidence가 있을 때; 8~12) · features 7 · apps 6.5
   - sequence: teaser 6 · problem 6 · primers 2.6+1.9×프라이머 수(12~16) · (probe 9, 있을 때) · result 9.5 / tubes 8.5 / gel 9.5 · (features 7, 프로브가 없을 때) · apps 6.5
+  - 영상 전체(장면 길이 합 − 겹침 0.5초씩): journey 49.5~54.8초 · loop 44.5~54.4초 · sequence 49.5~56.5초 · formula 41.0~46.7초 · lineage 41.0~47.3초 ·
+    claim 40.5~47.1초. 그 영상의 정확한 길이는 빌드 때 출력되는 `built (S · <유형> · <total>s)`.
 - `narration`(시그니처 안, 권장): 장면별 한 줄 대본. 키는 위 장면 이름(teaser · route/journey · parts/run/path · problem/primers/probe/result/tubes/gel · mix/effect · tree/traits · anatomy/tree(claim) ·
-  proof · features · apps 중 그 영상에 있는 것). 장면 길이(초) × 약 6음절 이내(예: journey 18.8초 → 100음절, teaser 6초 → 28음절).
-  6음절은 상한이다. 표지(teaser)·짧은 장면은 5음절 안쪽으로 쓰고, `python -I tools/narration.py --check <파일>`로 확인한다.
+  proof · features · apps 중 그 영상에 있는 것). **(장면 길이 − 2초) × 약 5음절 이내**(공백·문장부호 제외. 예: teaser 6초 → 20음절, apps 6.5초 → 22,
+  features 7초 → 25, route 7.5초 → 27, proof 12초 → 50, journey 16.1초 → 70, 18.8초 → 84 — 예시 137의 대본이 이 분량이다).
+  음성 창은 장면 길이 − 약 1.3초이고, 선희 클립은 앞뒤 무음과 문장 사이 쉼까지 쳐서 초당 약 5음절이다(문장이 셋 이상이면 더 줄인다; Google 음성은 속도가 다를 수 있다).
+  쓴 뒤 `python -I tools/narration.py --check <파일>`로 장면마다 실제로 들어가는지 확인한다(12초가 넘는 장면은 이 분량에서 +6%로 읽히기도 하는데 그대로 둔다.
+  +12% 이상으로 빨라지거나 잘리는 줄은 줄인다).
   숫자·단위는 읽히는 대로(“100에서 105도”, “퍼센트”). 없으면 시그니처 데이터로 자동 대본.
+  그 장면을 일부러 비우려면 값을 빈 문자열 `""`(또는 `null`)로 둔다(음성·자막 없음). 문장부호만 있는 줄(`"."`)은 비운 것으로 보지 않고 자동 대본으로 바뀐다.
 - 모식도인 부분(부위 배치, 물방울 경로)은 화면에 "모식"이라고 표기된다. 곡선은 Ct 값에서 문턱선을 지나도록 그린다.
-
-## 배경음악 (music, 선택 — 키 없이 그 특허만의 곡)
-그 기술에 맞는 곡을 직접 설계한다. 쓰면 `compose.py`가 연주해 그 특허의 배경음악으로 쓰고, 안 쓰면 기본 4곡을 돌려 쓴다.
-```json
-"music": {"mood": "green-field", "bpm": 112, "key": "G", "progression": ["G", "C", "Em", "D"],
-          "keys": "piano", "arp": "guitar", "pad": "strings", "lead": "celesta", "perc": "light", "seed": 11}
-```
-- mood(출발 프리셋): bright-tech(기기·IT) · green-field(재배·농업) · clean-lab(바이오·진단) · warm-craft(식품·가공). 나머지는 덮어쓸 것만.
-- progression: 마디당 화음 하나(`chord_bars`로 2마디씩), 반복. 쓸 수 있는 화음: 장3·m·7·maj7·m7·m9·maj9·9·6·m6·sus2·sus4·add9·madd9·dim·aug·7sus4, 분수화음 `A/C#`.
-  key만 주면 프리셋 진행을 그 조로 옮긴다. **밝고 경쾌하게**: 장조의 기본 3화음으로 된 팝 진행(I–V–vi–IV, I–IV–vi–V, I–V–IV–V)을 쓴다.
-  maj7·m9 같은 재즈 화음이나 단조로 시작하는 진행은 무겁고 심오하게 들리므로 쓰지 않는다.
-- keys / arp / lead: epiano · piano · marimba · guitar · celesta · none. pad: pad · strings · none. perc: none · light · pulse. bpm 70~160(기본 112~128, 경쾌하게).
-- 나레이션이 주인공이다: lead는 높은 음역에서 드물게만 나오고, 곡 전체가 말소리 대역을 비워 둔다. seed를 바꾸면 같은 설계로 다른 리듬이 나온다.
 
 ## 작성 후 자체 점검
 - JSON 문법 유효(`python -I -c "import json;json.load(open(path,encoding='utf-8'))"`)
