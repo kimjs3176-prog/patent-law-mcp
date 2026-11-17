@@ -150,6 +150,17 @@ def _sentences(text: str) -> List[str]:
     return [s.strip() for s in re.split(r"(?<=[.다!?])\s+", normalize_ws(text)) if len(s.strip()) > 10]
 
 
+def _head_phrase(element: str) -> str:
+    """구성요소의 머리 명사구 ('...형성된 건조부' -> '건조부', '...증자하는 단계' -> '증자하는 단계')."""
+    text = re.sub(r"^\[특징부\]\s*", "", element).strip(" .")
+    words = text.split()
+    if not words:
+        return text
+    if words[-1] in ("단계", "공정", "과정") and len(words) >= 2:
+        return " ".join(words[-2:])
+    return words[-1] if len(words[-1]) >= 2 else " ".join(words[-2:])
+
+
 def _extract_effect(abstract: str, description: str) -> Optional[str]:
     effect_section = _section(
         description,
@@ -162,7 +173,8 @@ def _extract_effect(abstract: str, description: str) -> Optional[str]:
     verb_re = re.compile(summary_grounding.EFFECT_VERB)
     en_re = re.compile(r"\b(?:effect|advantage|improv\w*|reduc\w*|increas\w*|enhanc\w*|prevent\w*)\b", re.I)
     for text in (description, abstract):
-        hits = [s for s in _sentences(text) if "효과" in s or verb_re.search(s) or en_re.search(s)]
+        hits = [s for s in _sentences(text) if ("효과" in s or verb_re.search(s) or en_re.search(s))
+                and not re.search(r"에\s*관한\s*것이다\.?$", s)]
         if hits:
             return " ".join(hits[:2])
     return None
@@ -224,7 +236,7 @@ def summarize_patent(
 
     pitch = [f"[도입] {title} 기술입니다."]
     if elements:
-        short = ", ".join(re.sub(r"^상기\s*", "", e)[:25] for e in elements[:4])
+        short = ", ".join(_head_phrase(e) for e in elements[:4])
         josa = "로" if label == "단계" else "으로"
         pitch.append(f"[핵심] 독립항은 {len(elements)}개 {label}{josa} 이루어집니다: {short}{' 등' if len(elements) > 4 else ''}.")
     pitch.append(f"[효과] {effect}" if effect else "[효과] (명세서의 '발명의 효과'를 확인해 기재하십시오)")

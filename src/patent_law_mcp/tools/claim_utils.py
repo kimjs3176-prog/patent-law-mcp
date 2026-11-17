@@ -82,6 +82,14 @@ def split_claim_elements(claim: str) -> Tuple[List[str], str]:
         p = re.sub(r"^(?:및|또는)\s+", "", p.strip(" ,"))
         if len(p) >= 2:
             parts.append(p)
+
+    # "~를 포함하고, (특징부)하는 것을 특징으로 하는 X": 특징부는 구성요소, X가 청구 대상
+    feature = re.search(r"^(.*?)(?:것을|을|를)?\s*특징으로\s*하는\s+(.+)$", subject)
+    if feature:
+        characterizing = re.sub(r"\s*(?:하는|되는|인)?\s*$", "", feature.group(1).strip(" ,"))
+        subject = feature.group(2).strip(" .")
+        if len(characterizing) >= 4:
+            parts.append(f"[특징부] {characterizing}")
     return parts, subject
 
 

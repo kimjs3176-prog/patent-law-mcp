@@ -114,6 +114,7 @@ def test_institution_disclosure_follows_amended_succession_rule():
     assert any("승계하지 않을 경우에만 4개월" in step for step in auto["administrative_steps"])
     manual = process_invention_disclosure("발명", ["A"], profile="public_research", has_advance_succession_rule=False)
     assert "승계를 포기한 것으로 봅니다" in manual["succession_rule"]
+    assert "발명진흥법 제13조 제2항·제3항, 같은 법 시행령 제7조" in manual["succession_rule"]
 
 
 def test_env_profile_switch_keeps_national_only_tools_national(monkeypatch):
