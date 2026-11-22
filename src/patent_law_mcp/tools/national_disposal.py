@@ -124,7 +124,12 @@ def calculate_royalty_estimate(
     else:
         result.update({
             "estimated_price_krw": None,
-            "basis": f"{art['royalty_estimation']} 제5항 단서 — 총판매예정수량을 예측할 수 없어 제품 단위당 실시료 예정가격으로 정함",
+            "basis": (
+                f"{art['royalty_estimation']} 제5항 단서 — 총판매예정수량을 예측할 수 없어 제품 단위당 실시료 예정가격으로 정함"
+                if purpose == "license"
+                else f"매각 예정가격은 총액으로 정해야 합니다 ({art['royalty_estimation']} 제5항 본문). 단위당 실시료는 참고값이며, "
+                "제5항 단서(단위당 예정가격)는 전용·통상실시에만 적용됩니다"
+            ),
         })
         if purpose == "license":
             warnings.append("단위당 실시료로 계약하면 매출 보고·정산 조항(판매 수량 확인 방법)을 계약서에 넣으십시오.")
@@ -159,7 +164,7 @@ def calculate_royalty_estimate(
         "점유율 산정 근거(부품 원가 비중, 청구항 대응 기능 비중 등)를 기록",
     ]
     result["warnings"] = warnings
-    result["legal_audit_basis"] = pm.audit_block("실시료", "요율")
+    result["legal_audit_basis"] = pm.audit_block("예정가격 산식")
     return result
 
 
@@ -287,8 +292,12 @@ def plan_national_disposal(
             documents.append("무상실시를 하려는 사유서 (수의계약신청서에 첨부)")
         else:
             warnings.append("제4호(국가시책 추진)는 지식재산처장이 필요하다고 인정해야 합니다. 인정 근거 문서를 확보하십시오.")
-        if disposal_type != "non_exclusive":
-            warnings.append("무상 사유는 처분 방법(경쟁입찰·수의계약) 요건을 대신하지 않습니다. 전용실시·매각의 수의계약 사유를 따로 확인하십시오.")
+        if disposal_type != "non_exclusive" and private_contract_exception is None:
+            warnings.append(
+                "무상 처분은 입찰금액이 없어 경쟁입찰로 진행할 수 없습니다. 전용실시·매각을 무상으로 하려면 수의계약 예외 사유"
+                f"({art['exclusive_competitive_bidding']} 단서)를 private_contract_exception으로 지정하거나 유상으로 진행하십시오."
+            )
+            documents = [d for d in documents if "수의계약신청서에 첨부" not in d]
     else:
         consideration = f"유상 (원칙, {art['free_disposal_grounds']} 본문) — 예정가격은 calculate_royalty_estimate로 산정 ({art['royalty_estimation']})"
 
@@ -313,7 +322,10 @@ def plan_national_disposal(
     else:
         documents += [
             "수의계약신청서 (시행규칙 별지 제4호서식)",
-            *[d for d in proc["private_contract_documents"] if not d.startswith("무상실시 사유서")],
+            *[
+                d for d in proc["private_contract_documents"]
+                if not d.startswith("무상실시 사유서") and not (free_ground is not None and d.startswith("매수대금 또는 실시료"))
+            ],
         ]
         steps.append(f"수의계약신청서를 지식재산처장 또는 수탁기관의 장에게 제출 ({art['private_contract_application']})")
 
@@ -323,7 +335,11 @@ def plan_national_disposal(
         steps.append(f"수탁기관은 기재사항을 갖춘 계약서와 신청서류로 지식재산처장 승인을 받고, 체결 후 완료문서 송부 ({art['trustee_contract_approval']} 제2항)")
         steps.append(f"처분결과 통지 — 계약서 사본 + {', '.join(proc['result_notice_items'])} ({art['disposal_result_notice']})")
     else:
-        steps.append("처분 내용과 처분보상금 지급 사항을 발명기관의 장에게 통지 → 발명기관의 장이 발명자에게 통지 (영 제14조 제1항·제2항)")
+        steps.append(
+            "처분 내용을 발명기관의 장에게 통지 → 발명기관의 장이 발명자에게 통지 (영 제14조 제1항·제2항). 무상 처분이라 처분보상금(영 제17조)은 없음"
+            if free_ground is not None
+            else "처분 내용과 처분보상금 지급 사항을 발명기관의 장에게 통지 → 발명기관의 장이 발명자에게 통지 (영 제14조 제1항·제2항)"
+        )
     if disposal_type == "exclusive":
         steps.append(f"최소실시료 {excl['minimum_royalty_amount']:,}원 이상을 계약일부터 {excl['payment_deadline_days']}일 이내 납부 ({art['exclusive_minimum_royalty']})")
         steps.append(f"전용실시권 설정등록 ({art['exclusive_license_registration']})")
@@ -343,13 +359,16 @@ def plan_national_disposal(
         if preparation_years >= proc["preparation_extension_min_years"]:
             end = _add_years(end, preparation_years)
             reasons.append(f"준비기간 {preparation_years}년만큼 연장 ({art['contract_term']} 제1호)")
-        if patent_expiry_date and patent_expiry_date <= _add_years(contract_start_date, proc["near_expiry_years"]):
-            if patent_expiry_date > end:
-                end = patent_expiry_date
+        if (
+            patent_expiry_date
+            and patent_expiry_date <= _add_years(contract_start_date, proc["near_expiry_years"])
+            and patent_expiry_date > end
+        ):
+            end = patent_expiry_date
             reasons.append(f"존속기간이 계약일부터 {proc['near_expiry_years']}년 이내 만료 → 만료 시까지 연장 가능 ({art['contract_term']} 제2호)")
         if patent_expiry_date and end > patent_expiry_date:
             end = patent_expiry_date
-            reasons.append("존속기간 만료일을 넘길 수 없으므로 만료일로 제한")
+            reasons.append(f"존속기간 만료일({patent_expiry_date.isoformat()})을 넘길 수 없으므로 만료일로 제한")
         term.update({"contract_start_date": contract_start_date.isoformat(), "latest_end_date": end.isoformat(), "extensions": reasons})
     if preparation_years and preparation_years < proc["preparation_extension_min_years"]:
         warnings.append(f"준비기간이 {proc['preparation_extension_min_years']}년 미만이면 연장 사유가 아닙니다.")
@@ -375,7 +394,7 @@ def plan_national_disposal(
         },
         "private_contract_exceptions": exceptions if disposal_type != "non_exclusive" else [],
         "warnings": warnings,
-        "legal_audit_basis": pm.audit_block("무상"),
+        "legal_audit_basis": pm.audit_block("처분 방식"),
     }
 
 
@@ -455,7 +474,7 @@ def get_trustee_obligations(
             "upper_bound_krw": int(disposal_income_krw * ratio),
             "basis": f"처분수입금의 100분의 {ratio * 100:g} 범위에서 예산 등을 고려해 고시로 정함 ({art['contribution_compensation']}). 실제 지급액은 지식재산처 결정",
         }
-    result["legal_audit_basis"] = pm.audit_block("수탁")
+    result["legal_audit_basis"] = pm.audit_block("기여보상금") if disposal_income_krw is not None else pm.audit_block("수탁기관 의무")
     return result
 
 

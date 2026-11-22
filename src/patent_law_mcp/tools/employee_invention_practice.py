@@ -265,6 +265,9 @@ def calculate_disposal_compensation(
             )
         if s.is_controlling_shareholder:
             row["tax_note"] = "지배주주 등 특수관계인은 직무발명보상금 비과세 제외. " + row["tax_note"]
+        if payout == 0:
+            row["estimated_tax_krw"] = 0
+            row["tax_note"] = "지급액 없음"
         row["net_payout_krw"] = payout - (row["estimated_tax_krw"] or 0)
         table.append(row)
 
