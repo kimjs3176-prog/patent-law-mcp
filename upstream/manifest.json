@@ -17,60 +17,12 @@
           "sha256": "b7565f0a5abdb8dc03185b4673e2a790232a9e70791d6a08811e29ba89411d71"
         },
         {
-          "path": "supabase/functions/summarize-patent/applicationGrounding.ts",
-          "role": "logic",
-          "ported_to": [
-            "src/patent_law_mcp/upstream/application_grounding.py"
-          ],
-          "sha256": "dd7114318a8cfcf4a71c1d2b2b39507920fa55011482999d71c6e91e6e3118f0"
-        },
-        {
-          "path": "supabase/functions/analyze-commercialization/trlConsistency.ts",
-          "role": "logic",
-          "ported_to": [
-            "src/patent_law_mcp/upstream/trl_consistency.py"
-          ],
-          "sha256": "89da1c84e03cab6713025dbca12c632083fdb334af4b343cbc44de89b4afb036"
-        },
-        {
-          "path": "src/lib/trlPresentation.ts",
-          "role": "logic",
-          "ported_to": [
-            "src/patent_law_mcp/upstream/trl_consistency.py"
-          ],
-          "sha256": "249cb803feae58f20e4ae86d87bb2a83e1e7f230ccc2244e94c086b82fe6c3ea"
-        },
-        {
           "path": "src/test/summaryGrounding.test.ts",
           "role": "tests",
           "ported_to": [
             "tests/test_upstream_parity.py"
           ],
           "sha256": "449a4d0abbee4e598b79389041262c5ba2423b2e24dcac081a593ce06b3da0b0"
-        },
-        {
-          "path": "src/test/trlConsistency.test.ts",
-          "role": "tests",
-          "ported_to": [
-            "tests/test_upstream_parity.py"
-          ],
-          "sha256": "f98b9b312f39cadb4a2f7156f7345e30b1df50c076d2a5856db0fa30c1165b9b"
-        },
-        {
-          "path": "src/test/trlStage.test.ts",
-          "role": "tests",
-          "ported_to": [
-            "tests/test_upstream_parity.py"
-          ],
-          "sha256": "c0749c8f7c3fcbf4a3b544d84bd35099312462e1517c2337b10e6b8dfb130600"
-        },
-        {
-          "path": "src/test/trlReasonStage.test.ts",
-          "role": "tests",
-          "ported_to": [
-            "tests/test_upstream_parity.py"
-          ],
-          "sha256": "71bad932b1ed133f82ba52f07ce04cdc4fd0e73975c1acb694a288708a22d345"
         }
       ],
       "watch": [
@@ -79,24 +31,8 @@
           "pattern": "*.ts"
         },
         {
-          "dir": "supabase/functions/analyze-commercialization",
-          "pattern": "*.ts"
-        },
-        {
-          "dir": "src/lib",
-          "pattern": "trl*.ts"
-        },
-        {
           "dir": "src/test",
           "pattern": "summaryGrounding*.test.ts"
-        },
-        {
-          "dir": "src/test",
-          "pattern": "trl*.test.ts"
-        },
-        {
-          "dir": "src/test",
-          "pattern": "application*.test.ts"
         }
       ],
       "ignored": [
@@ -131,6 +67,30 @@
         {
           "path": "src/test/trlPresentation.test.ts",
           "reason": "resolveTrlLevels(관리자 라벨 이관) 테스트 — 해당 함수 미포팅"
+        },
+        {
+          "path": "supabase/functions/summarize-patent/applicationGrounding.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
+        },
+        {
+          "path": "supabase/functions/analyze-commercialization/trlConsistency.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
+        },
+        {
+          "path": "src/lib/trlPresentation.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
+        },
+        {
+          "path": "src/test/trlConsistency.test.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
+        },
+        {
+          "path": "src/test/trlStage.test.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
+        },
+        {
+          "path": "src/test/trlReasonStage.test.ts",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
         }
       ]
     },
@@ -142,14 +102,6 @@
       "synced_at": "2026-11-08",
       "files": [
         {
-          "path": "references/CONTENT_SPEC.md",
-          "role": "spec",
-          "ported_to": [
-            "src/patent_law_mcp/upstream/video_signature.py"
-          ],
-          "sha256": "e9955b7fd50fbe2fb9145d4f4b541726d364245dc3b68c0f77410cb2d689b5e2"
-        },
-        {
           "path": "scripts/kipris.py",
           "role": "logic",
           "ported_to": [
@@ -160,10 +112,6 @@
         }
       ],
       "watch": [
-        {
-          "dir": "references",
-          "pattern": "*.md"
-        },
         {
           "dir": "scripts",
           "pattern": "kipris*.py"
@@ -177,6 +125,10 @@
         {
           "path": "references/templates.md",
           "reason": "영상 템플릿 설명 (영상 제작 전용)"
+        },
+        {
+          "path": "references/CONTENT_SPEC.md",
+          "reason": "도구 정리로 MCP에서 삭제 (2026-11-22) — 더 이상 포팅하지 않음"
         }
       ]
     }

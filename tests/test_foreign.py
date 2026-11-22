@@ -1,6 +1,5 @@
 import pytest
 
-from patent_law_mcp.tools.analysis import summarize_patent
 from patent_law_mcp.tools.claim_utils import detect_technology_type, is_dependent_claim, split_claim_elements
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.foreign_patents import parse_foreign_number
@@ -66,8 +65,3 @@ def test_english_scope_negation():
     assert "conveyor" in r["verified_elements"][0]["negated_keywords"]
 
 
-def test_english_summary_effect():
-    r = summarize_patent("US1", "Fruit sorting apparatus", "An apparatus sorts fruit. The apparatus reduces sorting time.",
-                         ["A fruit sorting apparatus, comprising: a conveyor; and a sensor."])
-    assert r["primary_effect"]["text"] == "The apparatus reduces sorting time."
-    assert r["claimed_subject_matter"] == "fruit sorting apparatus"

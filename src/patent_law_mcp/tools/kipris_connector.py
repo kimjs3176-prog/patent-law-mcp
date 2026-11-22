@@ -22,7 +22,6 @@ from pydantic import Field
 
 from patent_law_mcp import cache, net
 from patent_law_mcp.config import settings
-from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
 from patent_law_mcp.tools.claim_utils import normalize_ws
 
 KIPRIS_API_BASE = "https://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getBibliographyDetailInfoSearch"
@@ -339,7 +338,7 @@ def fetch_patent_smart(
             if not key:
                 next_steps.append("출원번호 조회에는 KIPRIS Plus 인증키가 필요합니다: 원격 커넥터는 요청 헤더 x-api-key, 로컬 실행은 환경변수 KIPRIS_API_KEY.")
             next_steps.append("입력한 13자리 번호가 공개번호라면 number_type='publication'으로 지정하십시오.")
-        next_steps.append("KIPRIS 또는 공보 텍스트를 복사해 analyze_patent_document에 붙여넣을 수 있습니다.")
+        next_steps.append("KIPRIS 또는 공보 텍스트를 복사해 parse_raw_patent_text에 붙여넣을 수 있습니다.")
         return {
             "found": False,
             "requested": requested,
@@ -361,42 +360,3 @@ def fetch_patent_smart(
     }
     cache.put("patent", cache_key, result)
     return result
-
-
-def inspect_and_summarize_by_appno(
-    patent_identifier: Annotated[str, Field(min_length=5, max_length=40)],
-    number_type: NumberType = "auto",
-) -> Dict[str, Any]:
-    """특허번호로 원문을 조회·검증한 뒤 요약 초안과 TRL 판정 안내를 함께 만듭니다.
-
-    Args:
-        patent_identifier: 특허번호 (출원번호는 KIPRIS_API_KEY 필요)
-        number_type: 번호 종류 ("auto", "application", "registration", "publication")
-    """
-    patent = fetch_patent_smart(patent_identifier, number_type)
-    if not patent["found"]:
-        return patent
-
-    p_id = patent.get("register_number") or patent.get("application_number") or patent["requested"]["number"]
-    summary = summarize_patent(
-        patent_id=p_id,
-        title=patent.get("title", ""),
-        abstract=patent.get("abstract", ""),
-        claims=patent.get("claims", []),
-        applicant=patent.get("applicant"),
-    )
-    return {
-        "metadata": {
-            "source": patent["source"],
-            "requested": patent["requested"],
-            "application_number": patent.get("application_number"),
-            "register_number": patent.get("register_number"),
-            "publication_number": patent.get("publication_number"),
-            "legal_status": patent.get("register_status") or "미확인",
-            "ipc_codes": patent.get("ipc_codes"),
-            "cpc_codes": patent.get("cpc_codes"),
-            "applicant": patent.get("applicant"),
-        },
-        "summary": summary,
-        "commercialization_trl": evaluate_commercialization(summary["technology_type"]),
-    }

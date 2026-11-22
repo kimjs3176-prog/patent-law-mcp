@@ -11,8 +11,6 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from pydantic import Field
 
-from patent_law_mcp.tools.analysis import evaluate_commercialization, summarize_patent
-from patent_law_mcp.tools.bundling_and_targeting import find_target_licensees_by_patent
 from patent_law_mcp.tools.claim_utils import is_deleted_claim, is_dependent_claim, normalize_ws
 from patent_law_mcp.upstream.gazette_holders import holders_from_text
 
@@ -194,51 +192,3 @@ def get_bundled_sample_patent(sample_key: str = "sorting_machine") -> Dict[str, 
     return {"found": True, "sample_key": canonical_key, **samples[canonical_key], "notice": notice}
 
 
-def analyze_patent_document(
-    raw_document_text: Annotated[str, Field(min_length=20)],
-    target_industry: Optional[str] = None,
-) -> Dict[str, Any]:
-    """붙여넣은 공보 텍스트를 파싱한 뒤 요약 초안과 수요기업 탐색 참고자료를 함께 만듭니다. (외부 API 불필요)
-
-    Args:
-        raw_document_text: 공보 또는 명세서 텍스트
-        target_industry: 목표 산업·제품 (수요기업 탐색에 반영, 선택)
-    """
-    parsed = parse_raw_patent_text(raw_document_text)
-    metadata = {
-        "title": parsed["title"],
-        "application_number": parsed["application_number"],
-        "register_number": parsed["register_number"],
-        "publication_number": parsed["publication_number"],
-        "applicant": parsed["applicant"],
-        "ipc_code": parsed["ipc_code"],
-        "parser_type": parsed["parser_mode"],
-    }
-
-    if not parsed["claims"]:
-        return {
-            "metadata": metadata,
-            "error": "청구항을 찾지 못해 분석을 중단했습니다.",
-            "warnings": parsed["warnings"],
-        }
-
-    p_id = parsed["register_number"] or parsed["application_number"] or parsed["publication_number"] or "번호 미기재"
-    summary = summarize_patent(
-        patent_id=p_id,
-        title=parsed["title"],
-        abstract=parsed["abstract"],
-        claims=parsed["claims"],
-        applicant=parsed["applicant"] or None,
-    )
-
-    return {
-        "metadata": metadata,
-        "warnings": parsed["warnings"],
-        "patent_summary": summary,
-        "commercialization_readiness": evaluate_commercialization(summary["technology_type"]),
-        "target_licensees_recommendation": find_target_licensees_by_patent(
-            technology_title=parsed["title"] or summary["claimed_subject_matter"],
-            ipc_code=parsed["ipc_code"] or None,
-            target_product=target_industry,
-        ),
-    }

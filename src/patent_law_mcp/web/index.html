@@ -189,12 +189,12 @@ footer .links{display:flex;gap:16px;flex-wrap:wrap}
     </div>
 
     <div class="group">
-      <h3>원문 확보·기술 분석</h3>
+      <h3>원문 확보·근거 확인</h3>
       <div class="cards">
-        <div class="card"><h4>특허·법령 원문</h4><div class="tools"><code>search_patents</code><code>fetch_patent_smart</code><code>inspect_and_summarize_by_appno</code><code>search_laws</code><code>get_law_article</code></div><p>특허 검색·번호 검증 조회(해외 포함), 법령·행정규칙 조문 원문과 시행일</p></div>
-        <div class="card"><h4>공보 분석·요약</h4><div class="tools"><code>parse_raw_patent_text</code><code>analyze_patent_document</code><code>summarize_patent</code><code>get_bundled_sample_patent</code></div><p>붙여 넣은 공보를 서지·청구항으로 분해하고 원문 발췌 요약 초안 작성</p></div>
-        <div class="card"><h4>근거 확인</h4><div class="tools"><code>ground_summary_figures</code><code>ground_patent_applications</code><code>evaluate_commercialization</code><code>verify_tech_transfer_scope_match</code></div><p>근거 없는 효과 수치·용도 걸러내기, TRL 판정, 청구항과 제품 설명 1차 대조(침해 감정 아님)</p></div>
-        <div class="card"><h4>기술 마케팅 보조</h4><div class="tools"><code>bundle_patents_for_transfer</code><code>find_target_licensees_by_patent</code></div><p>기술이전 패키지 구성, IPC→업종 참고 매핑과 수요기업군</p></div>
+        <div class="card"><h4>특허·법령 원문</h4><div class="tools"><code>search_patents</code><code>fetch_patent_smart</code><code>search_laws</code><code>get_law_article</code></div><p>특허 검색(KIPRIS 키가 없으면 Google Patents)·번호 검증 조회(해외 포함), 법령·행정규칙 조문 원문과 시행일. 가져온 원문은 Claude가 직접 읽고 분석합니다</p></div>
+        <div class="card"><h4>공보 붙여넣기</h4><div class="tools"><code>parse_raw_patent_text</code></div><p>붙여 넣은 공보·명세서를 명칭·번호·출원인·IPC·초록·청구항으로 정확히 분해</p></div>
+        <div class="card"><h4>요약 수치 근거 확인</h4><div class="tools"><code>ground_summary_figures</code></div><p>작성한 요약문에서 원문에 정량 근거가 없는 효과 수치(“30% 절감” 등)가 든 문장을 ‘추가 검증 필요’로 바꿈</p></div>
+        <div class="card"><h4>권리범위 1차 대조</h4><div class="tools"><code>verify_tech_transfer_scope_match</code></div><p>청구항 구성요소와 도입 기업 제품 설명을 대조해 실시 범위 확인(부정 표현 반영, 침해 감정 아님)</p></div>
       </div>
     </div>
   </section>

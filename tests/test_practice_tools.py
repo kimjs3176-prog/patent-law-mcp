@@ -1,14 +1,9 @@
 import pytest
 
-from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
 from patent_law_mcp.tools.document_parser import get_bundled_sample_patent
-from patent_law_mcp.tools.employee_invention_practice import (
-    calculate_disposal_compensation,
-    evaluate_exclusive_renewal,
-    evaluate_unutilized_free_license,
-)
+from patent_law_mcp.tools.employee_invention_practice import calculate_disposal_compensation, evaluate_exclusive_renewal, evaluate_unutilized_free_license
 
 GOOD_CONTRACT = """제2조(계약기간) 계약기간은 3년으로 한다. 실시지역은 대한민국, 실시분야는 식품 제조로 한다.
 제3조(최소실시료) 을은 최소실시료로 금 3,000,000원을 계약체결일로부터 60일 이내에 납부한다.
@@ -141,20 +136,6 @@ def test_scope_match_full():
 
 
 # ---------------------------------------------------------------- 번들링·타겟팅
-def test_bundle_validation_and_roles():
-    with pytest.raises(ValueError):
-        bundle_patents_for_transfer("p", [{"patent_id": "1", "title": "선별 장치"}])
-    r = bundle_patents_for_transfer("p", [{"patent_id": "1", "title": "선별 장치"}, {"patent_id": "2", "title": "추출물의 제조방법"}])
-    assert [b["portfolio_role"] for b in r["bundled_patents"]] == ["장치 특허 (Apparatus)", "공정 특허 (Process)"]
-    assert r["bundled_patents"][0]["applicant"] == "미기재"
-
-
-def test_targeting_has_no_fabricated_figures_and_filters_size():
-    r = find_target_licensees_by_patent("떡 제조", "A23L 7/10", preferred_company_size="startup")
-    assert len(r["target_buyer_personas"]) == 1
-    assert "18개월" not in str(r)
-    unknown = find_target_licensees_by_patent("기타", None)
-    assert unknown["matched_ksic_codes"] == []
 
 
 def test_scope_negation_reaches_end_of_clause():

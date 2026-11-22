@@ -5,10 +5,9 @@ patent-law-mcp의 일부 판정 규칙은 아래 저장소의 로직을 Python�
 | 업스트림 | 파일 | MCP 모듈 |
 |:---|:---|:---|
 | patent-summary-wizard | `summarize-patent/summaryGrounding.ts` | `upstream/summary_grounding.py` → `ground_summary_figures` |
-| | `summarize-patent/applicationGrounding.ts` | `upstream/application_grounding.py` → `ground_patent_applications` |
-| | `analyze-commercialization/trlConsistency.ts`, `src/lib/trlPresentation.ts` | `upstream/trl_consistency.py` → `evaluate_commercialization` |
-| patent-video-skill | `scripts/kipris.py` | `upstream/gazette_holders.py`, `tools/kipris_connector.py` (KIPRIS 응답 경로) |
-| | `references/CONTENT_SPEC.md` | `upstream/video_signature.py` → `summarize_patent`의 `video_signature_hint` |
+| patent-video-skill | `scripts/kipris.py` | `upstream/gazette_holders.py` → `parse_raw_patent_text`, `tools/kipris_connector.py` (KIPRIS 응답 경로) |
+
+특허 분석(용도 근거·TRL)·영상 시그니처 규칙은 2026-11-22 도구 정리로 MCP에서 삭제해 더 이상 포팅하지 않습니다 (`manifest.json`의 `ignored`).
 
 ## 어떻게 맞춰 두나
 
