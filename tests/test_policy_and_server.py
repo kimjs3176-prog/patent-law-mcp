@@ -51,6 +51,7 @@ EXPECTED_TOOLS = {
     "find_target_licensees_by_patent", "ground_patent_applications", "search_patents", "search_laws", "get_law_article", "calculate_patent_deadline", "calculate_patent_term", "calculate_annuity_schedule", "check_patent_rights_status",
     "calculate_royalty_estimate", "calculate_registration_compensation", "plan_national_disposal",
     "get_trustee_obligations", "guide_national_dispute", "check_portfolio_annuities",
+    "check_legal_source_updates",
 }
 
 

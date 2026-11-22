@@ -9,10 +9,10 @@
 [![CI](https://github.com/kimjs3176-prog/patent-law-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kimjs3176-prog/patent-law-mcp/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.13-3776AB?logo=python&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-stdio%20%7C%20streamable--http-6E56CF)
-![Tools](https://img.shields.io/badge/tools-32-2EA44F)
+![Tools](https://img.shields.io/badge/tools-33-2EA44F)
 ![Basis](https://img.shields.io/badge/%EA%B8%B0%EC%A4%80-%EC%A7%80%EC%8B%9D%EC%9E%AC%EC%82%B0%EC%B2%98%EA%B3%A0%EC%8B%9C%20%EC%A0%9C2025--4%ED%98%B8-1F6FEB)
 
-[빠른 시작](#quickstart) · [업무 흐름](#workflow) · [도구 32개](#tools) · [원문 대조](#verification) · [개발](#development)
+[빠른 시작](#quickstart) · [업무 흐름](#workflow) · [도구 33개](#tools) · [원문 대조](#verification) · [개발](#development)
 
 </div>
 
@@ -36,6 +36,7 @@ MCP > calculate_royalty_estimate
 | 받은 문서는 번호로 검증 | Google Patents·KIPRIS 문서의 출원·등록·공개번호가 요청과 다르면 버림 |
 | 기준값은 한 파일에서 관리 | 최소실시료·기본율·보상 비율·감액기준과 근거 조항은 `policies/*.yaml`. 고치면 다음 호출부터 반영 |
 | 원문과 어긋나면 표시 | 법령끼리 표현이 다른 항목은 해당 도구 결과에만 `unverified_items`로 표시 |
+| 원문을 정기 대조 | 매주 국가법령정보센터 현재 원문과 기준선을 비교하고, 결과마다 원문 대조일(`source_text_verified_on`)을 표시 |
 
 <a id="workflow"></a>
 
@@ -122,6 +123,7 @@ docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_A
 | **🏢 수탁기관**<br>`get_trustee_obligations` | 분기 실적보고 다음 달 15일 (고시 제18조), 대장 분기 통지 (시행규칙 제13조), 승인·처분결과 통지·만료 후 정산 (고시 제17조, 시행규칙 제12조), 변경 30일 내 통보, 금품 수수 금지, 기여보상금 15% 범위 (영 제18조) |
 | **🏛️ 심판·소송**<br>`guide_national_dispute` | 심판당사자 지정·대리인 선임, 패소 시 소 제기 협의 (30일 불변기간), 국가소송법 준용 (고시 제21\~24조) |
 | **📋 기준값**<br>`get_policy_table` | 적용 중인 기준값·근거 조항·원문 확인 필요 항목 |
+| **🔎 원문 점검**<br>`check_legal_source_updates` | 근거 법령·고시가 마지막 원문 대조 이후 개정됐는지 국가법령정보센터 현재 원문으로 확인 (인증키 불필요) |
 
 ### 2. 권리 유지·기한 관리
 
@@ -186,6 +188,30 @@ docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_A
 > - **무상실시 근거**: 고시 제3조 제2항은 근거를 영 제10조 제2항 **제1호**로 들지만, 현행 제1호는 '농업인·어업인의 소득 증대'입니다 (2024.11.12. 영 개정).
 > - **보상금 감액**: 고시 별표 1은 비밀유지 위반 시 '기관포상금(영 제18조 제1항)'도 감액 대상으로 적지만, 현행 영 제18조는 수탁기관 '기여보상금'입니다 (기관포상금은 2024.11.12. 영 개정으로 폐지).
 
+### 🗓️ 원문 정기 대조
+
+기준값이 기대는 조문을 [`legal_sources.yaml`](src/patent_law_mcp/policies/legal_sources.yaml)에 적어 두고, 국가법령정보센터 현재 시행 원문과 기준선([`legal_baseline.json`](src/patent_law_mcp/policies/legal_baseline.json))을 비교합니다.
+
+| 감지하는 변화 | 예 |
+|:---|:---|
+| 버전 변경 | 규정·고시가 새로 공포·시행됨 (타법개정 포함) |
+| 감시 조문 본문 변경·삭제 | 시행규칙 제11조 문장이 바뀌면 기준선과의 차이(diff)를 보고 |
+| 기준값 문구 누락 | 고시 제9조에서 '300만원'이 사라지면 `exclusive_licensing.minimum_royalty_amount`부터 확인하라고 안내 |
+
+- **자동 점검**: GitHub Actions가 매주 월요일 05:43(KST)에 실행하고, 바뀐 것이 있으면 `law-drift` 이슈를 열거나 갱신합니다. 화면 구조 변경 등으로 점검이 실패하면 작업이 실패로 표시됩니다.
+- **답변할 때**: 모든 도구 결과에 원문 대조일(`legal_audit_basis.source_text_verified_on`)이 붙고, `check_legal_source_updates` 도구로 그 이후 개정 여부를 바로 확인할 수 있습니다.
+- **반영 절차**: 원문 확인 → 정책 YAML·테스트 수정 → 기준선 갱신 → PR.
+
+```bash
+uv run python scripts/check_law_sources.py --check
+```
+
+```bash
+uv run python scripts/check_law_sources.py --update
+```
+
+`--check`의 종료 코드는 0(변경 없음)·1(검토 필요)·2(점검 오류)입니다. 시행 예정(공포 후 미시행) 개정은 시행일이 되어야 감지됩니다.
+
 <details>
 <summary><b>원문과 일치를 확인한 수치·기한</b></summary>
 
@@ -235,7 +261,7 @@ uv run python scripts/scenario_check.py
 python3 scripts/sync_upstream.py --check
 ```
 
-`scenario_check.py`는 서버를 별도 프로세스로 띄워 MCP 프로토콜(stdio·HTTP)로 49개 실사용 시나리오를 점검합니다. 네트워크가 없으면 `--offline`을 붙이십시오.
+`scenario_check.py`는 서버를 별도 프로세스로 띄워 MCP 프로토콜(stdio·HTTP)로 50개 실사용 시나리오를 점검합니다. 네트워크가 없으면 `--offline`을 붙이십시오.
 
 ---
 
