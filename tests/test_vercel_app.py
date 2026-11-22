@@ -50,3 +50,29 @@ def test_status_page_is_public_and_shows_config_without_secrets(monkeypatch):
     assert r.status_code == 200 and r.json()["auth"] == "Bearer 토큰" and r.json()["kipris_api_key"] is True
     assert "s3cret" not in r.text and '"k"' not in r.text
     assert _client(monkeypatch).get("/").json()["auth"].startswith("미설정")
+
+
+def test_browser_gets_landing_page_and_programs_get_status(monkeypatch):
+    c = _client(monkeypatch, PATENT_LAW_MCP_ALLOW_ANONYMOUS="1")
+    page = c.get("/", headers={"Accept": "text/html,application/xhtml+xml"})
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    assert "국가직무발명특허권등" in page.text and "/mcp" in page.text
+    status = c.get("/status").json()
+    assert status["tool_count"] == 33 and status["source_text_verified_on"]
+    assert c.get("/").json()["auth"] == "없음 (공개)"  # Accept가 HTML이 아니면 지금처럼 JSON
+    tok = _client(monkeypatch, PATENT_LAW_MCP_TOKEN="s3cret")
+    assert tok.get("/", headers={"Accept": "text/html"}).status_code == 200  # 안내 페이지는 토큰 없이 열림
+    assert tok.get("/status").status_code == 200
+
+
+def test_landing_page_lists_every_tool_exactly():
+    # 안내 페이지의 도구 이름이 실제 등록된 도구와 어긋나지 않도록
+    import asyncio
+    import re
+
+    from patent_law_mcp.server import mcp
+
+    html = vercel_app.INDEX_HTML.decode("utf-8")
+    on_page = set(re.findall(r"<code>([a-z_]+)</code>", html))
+    registered = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert on_page == registered, (registered - on_page, on_page - registered)
