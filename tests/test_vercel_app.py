@@ -93,7 +93,16 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
         def raise_for_status(self):
             return None
 
+    google = []
+
+    class Blocked(Resp):
+        status_code = 503
+        text = "<html>Sorry</html>"
+
     def fake_get(url, **kw):
+        if "patents.google.com" in url:  # 키가 없으면 Google Patents 검색으로 대신한다
+            google.append(url)
+            return Blocked()
         seen.append((kw.get("params") or {}).get("ServiceKey"))
         return Resp()
 
@@ -102,7 +111,7 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
     call = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search_patents", "arguments": {"query": "떡"}}}
 
     no_key = c.post("/mcp", json=call, headers=HDR).json()["result"]
-    assert "x-api-key" in json.dumps(no_key, ensure_ascii=False) and seen == []
+    assert "x-api-key" in json.dumps(no_key, ensure_ascii=False) and seen == [] and len(google) == 2  # 503이면 한 번 더 시도
 
     c.post("/mcp", json=call, headers={**HDR, "x-api-key": "user-key-123"})
     assert seen == ["user-key-123"]

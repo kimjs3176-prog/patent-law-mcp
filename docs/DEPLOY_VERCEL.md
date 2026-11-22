@@ -27,7 +27,7 @@
 |:---|:---|:---|:---|
 | `PATENT_LAW_MCP_ALLOW_ANONYMOUS` | **필수 (공개 운영)** | `1` | 누구나 로그인·토큰 없이 쓸 수 있게 공개합니다. 도구는 모두 읽기 전용이라 서버 데이터를 바꿀 수 없습니다 |
 | `PATENT_LAW_MCP_TOKEN` | 넣지 않음 | — | 넣으면 공개 대신 토큰 방식이 됩니다 (아래 "토큰 방식으로 바꾸려면") |
-| `KIPRIS_API_KEY` | 선택 | KIPRIS Plus 인증키 | 특허 검색·출원번호 조회. 없으면 등록·공개번호 조회는 Google Patents로 동작 |
+| `KIPRIS_API_KEY` | **넣지 않음 (권장)** | — | 공개 운영에서는 모든 사용자가 한 키의 호출 한도를 나눠 써 금방 막힙니다. 키가 없으면 검색은 Google Patents로 하고, 공식 KIPRIS 검색이 필요한 사용자는 커넥터 요청 헤더 `x-api-key`로 본인 키를 씁니다 |
 | `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). 운영 배포(patent-law-mcp.vercel.app)에서 2026-11-22 동작 확인. Open API 신청 정보의 IP·도메인 등록 조건에 따라 막히면 이 값을 지우십시오. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
 | `PATENT_LAW_MCP_PROFILE` | 선택 | `national` (기본) | `public_research`(대학·출연연), `private_company`(민간 기업) |
 | `PATENT_LAW_MCP_CACHE` | 설정 불필요 | — | Vercel에서는 자동으로 `/tmp/patent-law-mcp/cache.sqlite3`를 씁니다 (`off`로 끌 수 있음) |
@@ -35,7 +35,7 @@
 `PATENT_LAW_MCP_ALLOW_ANONYMOUS`도 `PATENT_LAW_MCP_TOKEN`도 넣지 않으면 서버는 공개로 넘어가지 않고 `/mcp` 요청을 503(설정 필요)으로 거부합니다. 공개는 이 값으로 명시적으로 켜야 합니다.
 
 > [!WARNING]
-> **공개 운영에서는 `KIPRIS_API_KEY`의 호출 한도를 모든 사용자가 함께 씁니다.** KIPRIS Plus 일일·월간 호출 한도를 넘으면 특허 검색·출원번호 조회가 막히고(등록·공개번호 조회는 Google Patents로 계속 동작), 키를 넣지 않아도 나머지 도구는 모두 동작합니다. 키를 넣는다면 아래 5번의 요청 수 제한을 꼭 거십시오.
+> **서버에 `KIPRIS_API_KEY`를 넣으면 모든 사용자가 그 키의 호출 한도를 함께 씁니다.** 그래서 기본 구성은 서버 키 없이 운영하는 것입니다: 특허 키워드 검색은 Google Patents(비공식)로, 공식 KIPRIS 검색·출원번호 조회는 사용자가 커넥터 요청 헤더 `x-api-key`로 보낸 본인 키로 합니다 (그 요청에만 쓰고 저장하지 않음). 그래도 서버 키를 넣는다면 아래 5번의 요청 수 제한을 꼭 거십시오.
 
 <details>
 <summary><b>토큰 방식으로 바꾸려면 (특정 사용자만 쓰게 할 때)</b></summary>

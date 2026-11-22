@@ -5,9 +5,35 @@ from patent_law_mcp.tools.patent_search import search_patents
 from conftest import fixture_bytes, fixture_text
 
 
-def test_search_requires_key():
+GOOGLE_JSON = """{"results": {"total_num_results": 2, "cluster": [{"result": [
+  {"patent": {"title": "굳지 않는 <b>떡</b>의 제조방법", "assignee": "대한민국(농촌진흥청장)",
+              "publication_number": "KR101070281B1", "filing_date": "2010-06-30", "grant_date": "2011-09-28",
+              "priority_date": "2010-06-30", "publication_date": "2011-10-06", "snippet": "전분의 &quot;노화&quot;를 늦추는"}},
+  {"patent": {"title": "떡 성형 장치", "assignee": "주식회사 예시", "publication_number": "KR20100060603A",
+              "filing_date": "2008-11-28", "publication_date": "2010-06-07"}},
+  {"patent": {"title": "Rice cake", "publication_number": "US1234567B2"}}
+]}]}}"""
+
+
+def test_search_without_key_falls_back_to_google(fake_http):
+    fake_http.routes["patents.google.com/xhr/query"] = (200, GOOGLE_JSON)
+    r = search_patents("떡", applicant="농촌진흥청", page_size=10)
+    assert r["found"] is True and r["source"].startswith("Google Patents")
+    first, second = r["results"]  # 한국 문헌만
+    assert first["title"] == "굳지 않는 떡의 제조방법" and first["register_number"] == "10-1070281"
+    assert first["snippet"] == '전분의 "노화"를 늦추는'
+    assert second["open_number"] == "10-2010-0060603" and second["register_number"] == ""
+    url_param = fake_http.calls[0][1]["url"]
+    assert "country=KR" in url_param and "assignee=" in url_param and "after=" not in url_param
+    only_2010 = search_patents("떡", year=2010, refresh=True)
+    assert [x["publication_number"] for x in only_2010["results"]] == ["KR101070281B1"]
+
+
+def test_search_without_key_reports_google_block_without_inventing(fake_http):
+    fake_http.routes["patents.google.com/xhr/query"] = (503, "<html>Sorry...</html>")
     r = search_patents("떡")
-    assert r["found"] is False and "KIPRIS_API_KEY" in r["error"]
+    assert r["found"] is False and "results" not in r
+    assert "503" in r["error"] and "x-api-key" in r["how_to"] and "KIPRIS_API_KEY" in r["how_to"]
 
 
 def test_word_search(fake_http, monkeypatch):

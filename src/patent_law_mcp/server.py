@@ -195,7 +195,8 @@ register(
 register(
     search_patents,
     "search_patents",
-    "KIPRIS Plus 공식 API로 한국 특허 검색 (키워드 또는 출원인+명칭, KIPRIS_API_KEY 필요). 결과는 가공·재정렬하지 않음",
+    "한국 특허 검색 (키워드 또는 출원인+명칭). KIPRIS Plus 인증키(사용자 요청 헤더 x-api-key 또는 서버 KIPRIS_API_KEY)가 있으면 공식 API, "
+    "없으면 Google Patents 공개 검색(비공식, 권리 상태 없음). 결과는 가공·재정렬하지 않으며 source로 출처를 밝힘",
     NETWORK,
 )
 register(
