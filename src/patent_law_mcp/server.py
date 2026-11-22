@@ -18,13 +18,7 @@ from mcp.types import ToolAnnotations
 
 from patent_law_mcp.legal_sources import check_legal_source_updates
 from patent_law_mcp.policies.policy_manager import get_policy_table
-from patent_law_mcp.tools.analysis import (
-    evaluate_commercialization,
-    ground_patent_applications,
-    ground_summary_figures,
-    summarize_patent,
-)
-from patent_law_mcp.tools.bundling_and_targeting import bundle_patents_for_transfer, find_target_licensees_by_patent
+from patent_law_mcp.tools.grounding import ground_summary_figures
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
 from patent_law_mcp.tools.deadlines import (
@@ -34,11 +28,7 @@ from patent_law_mcp.tools.deadlines import (
     calculate_patent_term,
     check_patent_rights_status,
 )
-from patent_law_mcp.tools.document_parser import (
-    analyze_patent_document,
-    get_bundled_sample_patent,
-    parse_raw_patent_text,
-)
+from patent_law_mcp.tools.document_parser import parse_raw_patent_text
 from patent_law_mcp.tools.employee_invention_practice import (
     calculate_disposal_compensation,
     evaluate_exclusive_renewal,
@@ -52,7 +42,7 @@ from patent_law_mcp.tools.national_disposal import (
     guide_national_dispute,
     plan_national_disposal,
 )
-from patent_law_mcp.tools.kipris_connector import fetch_patent_smart, inspect_and_summarize_by_appno
+from patent_law_mcp.tools.kipris_connector import fetch_patent_smart
 from patent_law_mcp.tools.law_lookup import get_law_article, search_laws
 from patent_law_mcp.tools.patent_search import search_patents
 
@@ -233,12 +223,6 @@ register(
     NETWORK,
 )
 register(
-    inspect_and_summarize_by_appno,
-    "inspect_and_summarize_by_appno",
-    "특허번호로 원문 조회·검증 후 요약 초안까지 실행 (조회 실패 시 요약하지 않고 사유 반환)",
-    NETWORK,
-)
-register(
     search_laws,
     "search_laws",
     "국가법령정보센터에서 법령(법률·시행령·시행규칙) 또는 행정규칙(고시 등) 검색 (LAW_OC 필요)",
@@ -255,24 +239,8 @@ register(
     "parse_raw_patent_text",
     "붙여넣은 공보·명세서 텍스트에서 명칭·출원/등록/공개번호·출원인·IPC·초록·청구항 분해 (찾지 못한 항목은 warnings로 안내)",
 )
-register(
-    get_bundled_sample_patent,
-    "get_bundled_sample_patent",
-    "도구 시연·테스트용 가상 샘플 특허 로드 (실존 특허 아님)",
-)
 
-# 4. 기술 분석·요약 (기술이전 상담 자료)
-register(
-    summarize_patent,
-    "summarize_patent",
-    "특허 원문(명칭·초록·청구항·명세서)에서 문장을 발췌해 기술이전 상담용 요약 초안과 기술소개영상 시그니처 유형 추천 생성 "
-    "(원문에 없는 효과·수치는 만들지 않음)",
-)
-register(
-    analyze_patent_document,
-    "analyze_patent_document",
-    "붙여넣은 공보 텍스트를 파싱해 요약 초안·TRL 안내·수요기업 탐색 참고자료를 함께 생성 (외부 API 불필요)",
-)
+# 4. 요약 근거 확인·권리범위 대조 (기술이전 상담 자료)
 register(
     ground_summary_figures,
     "ground_summary_figures",
@@ -280,34 +248,11 @@ register(
     "(patent-summary-wizard summaryGrounding 규칙)",
 )
 register(
-    ground_patent_applications,
-    "ground_patent_applications",
-    "제안된 활용 용도를 원문 발췌와 대조해 청구항 명시 용도·명세서 일반 용도·근거 미확인으로 분류 "
-    "(patent-summary-wizard applicationGrounding 규칙)",
-)
-register(
-    evaluate_commercialization,
-    "evaluate_commercialization",
-    "실증 근거 수준 또는 요약서 상용화전망 서술로 TRL 판정, 제시 TRL이 서술 단계와 어긋나면 보정 "
-    "(patent-summary-wizard trlConsistency 규칙)",
-)
-register(
     verify_tech_transfer_scope_match,
     "verify_tech_transfer_scope_match",
     "청구항 구성요소와 도입 희망 기업 제품 설명의 키워드 1차 대조 (부정 표현 반영, 침해 감정 아님)",
 )
 
-# 5. 기술 마케팅 보조
-register(
-    bundle_patents_for_transfer,
-    "bundle_patents_for_transfer",
-    "여러 특허(공정·장치·소재)를 기술이전 패키지로 묶고 유형별 역할과 계약 구조 초안 정리",
-)
-register(
-    find_target_licensees_by_patent,
-    "find_target_licensees_by_patent",
-    "IPC 기반 KSIC 참고 매핑과 기업 규모별 수요기업군·발굴 채널 정리",
-)
 
 def main(argv=None):
     import argparse

@@ -76,7 +76,7 @@ vercel --prod
 3. 설정 상태를 JSON으로 보려면 `https://<프로젝트>.vercel.app/status` 를 엽니다 (토큰·키 값은 표시하지 않음).
 
 ```json
-{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "없음 (공개)", "kipris_api_key": false, "law_oc": true, "profile": "national", "tool_count": 33, "source_text_verified_on": "2026-11-22"}
+{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "없음 (공개)", "kipris_api_key": false, "law_oc": true, "profile": "national", "tool_count": 25, "source_text_verified_on": "2026-11-22"}
 ```
 
 4. 커넥터 주소는 끝에 `/mcp`를 붙인 **`https://<프로젝트>.vercel.app/mcp`** 입니다. 이 주소를 사용자에게 알려 주고, [README](../README.md)의 커넥터 등록 절차를 안내하십시오.

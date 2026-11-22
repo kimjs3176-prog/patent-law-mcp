@@ -100,16 +100,13 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     # 0. 서버 기본
     tools = await session.list_tools()
     names = {t.name for t in tools.tools}
-    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 33 else "FAIL", f"{len(names)}개"))
+    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 25 else "FAIL", f"{len(names)}개"))
 
     # 1. 기술이전 상담 (국유특허·실데이터)
     s = "1. 기술이전 상담"
     patent = await step(s, "등록번호 조회·검증", "fetch_patent_smart", {"patent_identifier": "10-1070281"},
                         lambda e, d: ok(not e and d.get("found") and d["register_number"] == "10-1070281"
                                         and d["application_number"] == "10-2008-0119257", str(d)[:120]), network=True)
-    await step(s, "원스톱 요약", "inspect_and_summarize_by_appno", {"patent_identifier": "10-1070281"},
-               lambda e, d: ok(not e and d["summary"]["claims_overview"]["independent"] >= 1
-                               and d["commercialization_trl"]["estimated_trl"] is None, str(d)[:120]), network=True)
     if patent and patent.get("claims"):
         await step(s, "권리범위 1차 대조", "verify_tech_transfer_scope_match",
                    {"claim_text": patent["claims"][0], "target_product_spec": "슬러지를 투입구로 넣어 열풍주입부의 열풍으로 건조하고 배출구로 내보내는 건조부를 갖춘 설비"},
@@ -129,11 +126,10 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
 
     # 2. 공보 붙여넣기
     s = "2. 공보 붙여넣기"
-    await step(s, "공보 분석", "analyze_patent_document", {"raw_document_text": GAZETTE, "target_industry": "떡 제조"},
-               lambda e, d: ok(not e and d["metadata"]["applicant"] == "대한민국(농촌진흥청장)"
-                               and d["metadata"]["ipc_code"] == "A23L 7/10"
-                               and d["patent_summary"]["claims_overview"]["total"] == 2
-                               and d["patent_summary"]["video_signature_hint"]["recommended_type"] == "journey", str(d)[:160]))
+    await step(s, "공보 분해", "parse_raw_patent_text", {"raw_text": GAZETTE},
+               lambda e, d: ok(not e and d["applicant"] == "대한민국(농촌진흥청장)"
+                               and d["ipc_code"] == "A23L 7/10" and d["claims_count"] == 2
+                               and d["independent_claim_numbers"] == [1], str(d)[:160]))
 
     # 3. 직무발명·보상 (국유특허)
     s = "3. 직무발명·보상"
@@ -187,13 +183,6 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     await step(s, "효과 수치 근거", "ground_summary_figures",
                {"summary_text": "에너지를 30% 절감한다. 수율이 2배 향상된다.", "source_text": "본 발명은 수율을 2배 향상시킨다."},
                lambda e, d: ok(not e and d["removed_figures"] == ["30%"] and "2배" in d["sanitized_text"], str(d)[:160]))
-    await step(s, "용도 근거", "ground_patent_applications",
-               {"applications": [{"kind": "청구항", "label": "식품 발효", "evidence": "식품 발효용 조성물로서 유산균을 포함하는 조성물이다."}],
-                "claims": ["식품 발효용 조성물로서 유산균을 포함하는 조성물이다."]},
-               lambda e, d: ok(not e and d["applications"][0]["verdict"] == "청구항 명시 용도", str(d)[:120]))
-    await step(s, "TRL 정합성", "evaluate_commercialization",
-               {"technology_domain": "분자마커", "commercialization_outlook": "본 발명은 실험실 검증을 완료하였다. 단기적으로는 기술이전을 추진한다.", "proposed_trl": 6},
-               lambda e, d: ok(not e and d["estimated_trl"] == "TRL 4" and d["trl_adjusted"], str(d)[:120]))
 
     # 8. 인증키가 없을 때
     s = "8. 인증키 없음"
@@ -214,8 +203,6 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
                lambda e, d: ok(e and "번호 형식" in str(d), str(d)[:120]))
     await step(s, "없는 특허", "fetch_patent_smart", {"patent_identifier": "10-9999999"},
                lambda e, d: ok(not e and d["found"] is False and "title" not in d, str(d)[:120]), network=True)
-    await step(s, "가상 샘플 표시", "get_bundled_sample_patent", {"sample_key": "떡"},
-               lambda e, d: ok(not e and d["is_fictional_sample"] and d["register_number"].startswith("SAMPLE-"), str(d)[:120]))
 
     # 10. 기관 유형별 프로파일
     s = "10. 프로파일"
@@ -263,22 +250,6 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
 
     # 12. 근거 부족·불완전 입력에서 답변이 과도하게 단정되지 않는지 확인
     s = "12. 답변 품질"
-    for outlook in (None, "향후 현장 검증을 추진할 예정이다."):
-        args = {"technology_domain": "식품", "proposed_trl": 9}
-        if outlook:
-            args["commercialization_outlook"] = outlook
-        await step(s, "근거 없는 TRL" + (" (계획만)" if outlook else ""), "evaluate_commercialization", args,
-                   lambda e, d: ok(not e and d["estimated_trl"] is None and d.get("proposed_trl") == 9, str(d)[:180]))
-    await step(s, "종속항만 있는 요약", "summarize_patent",
-               {"patent_id": "test", "title": "센서 장치", "abstract": "센서 장치에 관한 발명이다.",
-                "claims": ["제1항에 있어서, 온도 센서를 포함하는 장치."]},
-               lambda e, d: ok(not e and d["claims_overview"]["independent"] == 0
-                               and not d["workflow_or_components"] and d["warnings"]
-                               and not any("독립항은" in p for p in d["elevator_pitch_draft"]), str(d)[:180]))
-    await step(s, "음수 온도 보존", "summarize_patent",
-               {"patent_id": "test", "title": "냉각 방법", "abstract": "-20℃에서 냉각한다.",
-                "claims": ["시료를 -20℃에서 냉각하는 단계;를 포함하는 방법."]},
-               lambda e, d: ok(not e and any(c["value"] == "-20℃" for c in d["key_spec_chips"]), str(d)[:180]))
     await step(s, "구성요소 명시적 부정", "verify_tech_transfer_scope_match",
                {"claim_text": "센서와 모터를 포함하는 장치.", "target_product_spec": "센서는 있음. 모터는 없음."},
                lambda e, d: ok(not e and d["matched_elements"] == "0/1", str(d)[:180]))
@@ -326,7 +297,7 @@ async def http_session() -> List[Result]:
                 await session.initialize()
                 n = len((await session.list_tools()).tools)
                 _, data = await call(session, "calculate_patent_term", {"application_date": "2010-06-30"})
-                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 33 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
+                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 25 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
         r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                        headers={"accept": "application/json, text/event-stream"}, trust_env=False)
         results.append(("13. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))

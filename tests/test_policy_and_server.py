@@ -6,7 +6,12 @@ import time
 import pytest
 import yaml
 
-from patent_law_mcp.policies.policy_manager import DEFAULT_POLICY_FILE, PolicyError, PolicyManager, validate_policy
+from patent_law_mcp.policies.policy_manager import (
+    DEFAULT_POLICY_FILE,
+    PolicyError,
+    PolicyManager,
+    validate_policy,
+)
 from patent_law_mcp.server import mcp
 
 
@@ -43,22 +48,29 @@ def test_env_override(tmp_path, monkeypatch):
 
 
 EXPECTED_TOOLS = {
-    "fetch_patent_smart", "inspect_and_summarize_by_appno", "parse_raw_patent_text", "analyze_patent_document",
-    "get_bundled_sample_patent", "summarize_patent", "ground_summary_figures", "evaluate_commercialization",
-    "design_licensing_terms", "review_licensing_contract", "process_invention_disclosure",
-    "calculate_disposal_compensation", "evaluate_unutilized_free_license", "evaluate_exclusive_renewal",
-    "get_policy_table", "verify_tech_transfer_scope_match", "bundle_patents_for_transfer",
-    "find_target_licensees_by_patent", "ground_patent_applications", "search_patents", "search_laws", "get_law_article", "calculate_patent_deadline", "calculate_patent_term", "calculate_annuity_schedule", "check_patent_rights_status",
-    "calculate_royalty_estimate", "calculate_registration_compensation", "plan_national_disposal",
-    "get_trustee_obligations", "guide_national_dispute", "check_portfolio_annuities",
-    "check_legal_source_updates",
+    # 국가직무발명특허권 업무
+    "process_invention_disclosure", "calculate_registration_compensation", "plan_national_disposal",
+    "calculate_royalty_estimate", "design_licensing_terms", "review_licensing_contract",
+    "evaluate_unutilized_free_license", "evaluate_exclusive_renewal", "calculate_disposal_compensation",
+    "get_trustee_obligations", "guide_national_dispute", "check_legal_source_updates", "get_policy_table",
+    # 권리 유지·기한
+    "calculate_annuity_schedule", "check_portfolio_annuities", "calculate_patent_term", "calculate_patent_deadline",
+    "check_patent_rights_status",
+    # 원문 확보
+    "search_patents", "fetch_patent_smart", "search_laws", "get_law_article", "parse_raw_patent_text",
+    # 요약 근거·권리범위
+    "ground_summary_figures", "verify_tech_transfer_scope_match",
+}
+REMOVED_TOOLS = {  # 2026-11-22 도구 정리로 삭제
+    "summarize_patent", "analyze_patent_document", "inspect_and_summarize_by_appno", "ground_patent_applications",
+    "evaluate_commercialization", "bundle_patents_for_transfer", "find_target_licensees_by_patent", "get_bundled_sample_patent",
 }
 
 
 def test_registered_tools():
     tools = asyncio.run(mcp.list_tools())
     names = {t.name for t in tools}
-    assert EXPECTED_TOOLS <= names
+    assert names == EXPECTED_TOOLS and not names & REMOVED_TOOLS
     assert tools[0].name == "process_invention_disclosure"  # 국가직무발명 업무 도구가 목록 맨 앞
     assert not {"find_patents_by_business_need", "recommend_similar_patents", "recommend_free_transfer_patents"} & names
     fetch = next(t for t in tools if t.name == "fetch_patent_smart")

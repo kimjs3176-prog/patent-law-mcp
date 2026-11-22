@@ -1,15 +1,6 @@
-from patent_law_mcp.tools.analysis import (
-    evaluate_commercialization,
-    extract_key_spec_chips,
-    ground_summary_figures,
-    summarize_patent,
-)
+from patent_law_mcp.tools.grounding import ground_summary_figures
 from patent_law_mcp.tools.claim_utils import detect_technology_type, split_claim_elements
-from patent_law_mcp.tools.document_parser import (
-    analyze_patent_document,
-    get_bundled_sample_patent,
-    parse_raw_patent_text,
-)
+from patent_law_mcp.tools.document_parser import get_bundled_sample_patent, parse_raw_patent_text
 from conftest import fixture_text
 import pytest
 
@@ -44,26 +35,12 @@ def test_parser_does_not_invent_missing_fields():
     assert any("청구항" in w for w in r["warnings"])
 
 
-def test_analyze_stops_without_claims():
-    r = analyze_patent_document("발명의 명칭: 무엇인가\n요약 없음, 청구항 없음, 메모만 있습니다.")
-    assert "error" in r and "patent_summary" not in r
-
-
 def test_samples_are_marked_fictional_and_unknown_keys_fail():
     s = get_bundled_sample_patent("떡")
     assert s["found"] and s["is_fictional_sample"]
     assert s["register_number"].startswith("SAMPLE-")
     r = get_bundled_sample_patent("10-9999999")
     assert r["found"] is False and "sorting_machine" in r["available_samples"]
-
-
-def test_spec_chips_do_not_read_angles_as_temperature():
-    chips = extract_key_spec_chips("상기 조명부는 45도 입사각으로 850nm 광을 조사하며, 60~75℃에서 2~4시간 추출한다.")
-    values = {c["key"]: c["value"] for c in chips}
-    assert values["온도 조건"] == "60~75℃"
-    assert values["파장"] == "850nm"
-    assert values["처리 시간"] == "2~4시간"
-    assert extract_key_spec_chips("수치가 없는 문장") == []
 
 
 def test_technology_type():
@@ -78,24 +55,6 @@ def test_claim_elements_exclude_preamble():
     assert subject == "선별 장치"
 
 
-def test_summary_effect_is_extracted_not_invented():
-    s = get_bundled_sample_patent("sorting_machine")
-    r = summarize_patent("x", s["title"], s["abstract"], s["claims"], s["description"])
-    assert r["primary_effect"]["source"] == "원문 발췌"
-    assert r["primary_effect"]["text"] in s["description"]
-    assert "grounding_verified" not in r
-
-    no_effect = summarize_patent("x", "장치", "본 발명은 장치에 관한 것이다.", ["A부; 및 B부;를 포함하는 장치."])
-    assert no_effect["primary_effect"]["source"] == "미확인"
-    assert "수율" not in " ".join(no_effect["elevator_pitch_draft"])
-
-
-def test_summary_skips_deleted_and_dependent_claims():
-    r = summarize_patent("x", "장치", "초록", ["삭제", "제1항에 있어서, C를 더 포함하는 장치.", "A부; 및 B부;를 포함하는 장치."])
-    assert r["claims_overview"] == {"total": 3, "deleted": 1, "independent": 1}
-    assert r["technical_solution"].startswith("A부")
-
-
 def test_ground_summary_figures():
     # 업스트림 규칙: 근거 없는 수치가 있는 문장은 통째로 '추가 검증 필요' 문장으로 바꾸고, 근거 있는 문장은 그대로 둔다
     r = ground_summary_figures("에너지를 30% 절감한다. 수율이 2배 향상된다.", "본 발명은 수율을 2배 향상시킨다.")
@@ -105,41 +64,11 @@ def test_ground_summary_figures():
     assert r["scope"] == "전체 텍스트"
 
 
-def test_trl_requires_evidence():
-    assert evaluate_commercialization("식품")["estimated_trl"] is None
-    assert evaluate_commercialization("식품", "prototype")["estimated_trl"] == "TRL 5~6"
-
-
-@pytest.mark.parametrize("outlook", [None, "향후 현장 검증을 추진할 예정이다.", "실증 자료가 없습니다."])
-def test_proposed_trl_without_evidence_remains_unverified(outlook):
-    result = evaluate_commercialization("식품", proposed_trl=9, commercialization_outlook=outlook)
-    assert result["estimated_trl"] is None
-    assert result["proposed_trl"] == 9
-
-
-@pytest.mark.parametrize("claim", ["제1항에 있어서, 온도 센서를 포함하는 장치.",
-                                   "The device of claim 1, comprising a sensor."])
-def test_dependent_only_summary_requests_independent_claim(claim):
-    result = summarize_patent("test", "장치", "센서에 관한 장치이다.", [claim])
-    assert result["claims_overview"]["independent"] == 0
-    assert result["technical_solution"] == ""
-    assert result["workflow_or_components"] == []
-    assert any("독립항 전문" in warning for warning in result["warnings"])
-    assert not any("독립항은" in line for line in result["elevator_pitch_draft"])
-
-
-@pytest.mark.parametrize("value", ["-20℃", "−20℃", "-20~-10℃", "-20–-10℃", "+20℃", "60-75℃", "-0.5°C"])
-def test_temperature_sign_and_range_preserved(value):
-    chips = extract_key_spec_chips(f"시료를 {value}에서 처리한다.")
-    assert chips[0]["value"] == value
-
-
 def test_gazette_holder_address_lines_are_dropped():
     text = fixture_text("gazette_b1.txt").replace(
         "     대한민국(농촌진흥청장)\n", "     대한민국(관리부서:농촌진흥청장)\n     전라북도 전주시 덕진구 농생명로 300\n"
     )
     assert parse_raw_patent_text(text)["applicants"] == ["대한민국(관리부서:농촌진흥청장)"]
-
 
 
 def test_characterizing_clause_is_element_not_subject():
@@ -152,10 +81,3 @@ def test_characterizing_clause_is_element_not_subject():
     assert elements[3].startswith("[특징부] 상기 조절부는 상호 교대로")
 
 
-def test_pitch_uses_head_phrases_and_skips_scope_sentence():
-    r = summarize_patent(
-        "x", "건조장치", "본 발명은 건조장치에 관한 것이다.",
-        ["투입구가 형성된 건조부; 열풍을 주입하는 열풍주입부;를 포함하는 건조장치."],
-    )
-    assert "건조부, 열풍주입부" in r["elevator_pitch_draft"][1]
-    assert r["primary_effect"]["source"] == "미확인"  # '~에 관한 것이다'는 효과 문장이 아님

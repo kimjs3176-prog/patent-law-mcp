@@ -24,7 +24,7 @@ from patent_law_mcp.tools.kipris_connector import _digits, _format_app, _format_
 KIPRIS_SEARCH_BASE = "https://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice"
 GOOGLE_QUERY_URL = "https://patents.google.com/xhr/query"
 NO_KEY_HELP = (
-    "kipris.or.kr에서 검색해 찾은 등록·공개번호로 fetch_patent_smart를 쓰거나 공보 원문을 analyze_patent_document에 붙여 넣을 수 있습니다. "
+    "kipris.or.kr에서 검색해 찾은 등록·공개번호로 fetch_patent_smart를 쓰거나 공보 원문을 parse_raw_patent_text에 붙여 넣을 수 있습니다. "
     "본인 KIPRIS Plus 인증키가 있으면 원격 커넥터의 요청 헤더 x-api-key에, 로컬 실행이면 환경변수 KIPRIS_API_KEY에 넣으십시오."
 )
 

@@ -1,10 +1,6 @@
 import pytest
 
-from patent_law_mcp.tools.kipris_connector import (
-    fetch_patent_smart,
-    inspect_and_summarize_by_appno,
-    parse_kr_patent_number,
-)
+from patent_law_mcp.tools.kipris_connector import fetch_patent_smart, parse_kr_patent_number
 from conftest import fixture_bytes, fixture_text
 
 
@@ -117,13 +113,3 @@ def test_kipris_other_application_is_discarded(fake_http, monkeypatch):
     assert r["found"] is False
 
 
-def test_inspect_does_not_summarize_unfound_patent(fake_http):
-    r = inspect_and_summarize_by_appno("10-9999999")
-    assert r["found"] is False and "summary" not in r
-
-
-def test_inspect_summarizes_verified_patent(fake_http):
-    fake_http.routes["KR101070281B1"] = (200, fixture_text("google_registration.html"))
-    r = inspect_and_summarize_by_appno("10-1070281")
-    assert r["summary"]["title"] == "유기성 슬러지의 고정상식 건조장치"
-    assert r["commercialization_trl"]["estimated_trl"] is None

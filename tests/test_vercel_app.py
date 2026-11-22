@@ -27,7 +27,7 @@ def test_token_required_and_stateless_requests_work(monkeypatch):
     r = c.post("/mcp", json=INIT, headers=auth)
     assert r.status_code == 200 and r.json()["result"]["serverInfo"]["name"] == "patent-law-mcp"
     tools = c.post("/mcp", json=LIST, headers=auth).json()["result"]["tools"]  # 세션 없이 다음 요청도 처리
-    assert len(tools) == 33
+    assert len(tools) == 25
 
 
 def test_anonymous_must_be_explicit(monkeypatch):
@@ -58,7 +58,7 @@ def test_browser_gets_landing_page_and_programs_get_status(monkeypatch):
     assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
     assert "국가직무발명특허권등" in page.text and "/mcp" in page.text
     status = c.get("/status").json()
-    assert status["tool_count"] == 33 and status["source_text_verified_on"]
+    assert status["tool_count"] == 25 and status["source_text_verified_on"]
     assert c.get("/").json()["auth"] == "없음 (공개)"  # Accept가 HTML이 아니면 지금처럼 JSON
     tok = _client(monkeypatch, PATENT_LAW_MCP_TOKEN="s3cret")
     assert tok.get("/", headers={"Accept": "text/html"}).status_code == 200  # 안내 페이지는 토큰 없이 열림
