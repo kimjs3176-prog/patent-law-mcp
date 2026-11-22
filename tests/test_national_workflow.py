@@ -146,3 +146,25 @@ def test_portfolio_annuities_sorted_by_risk():
     cats = {p["patent_id"]: p["category"] for p in r["patents"]}
     assert cats == {"OK": "정상", "SOON": "임박", "LATE": "추가납부기간"}
     assert [p["patent_id"] for p in r["patents"]] == ["LATE", "SOON", "OK"]
+
+
+# ---------------------------------------------------------------- 감액기준 (고시 별표 1)
+def test_reduction_table_from_annex1():
+    one = [{"name": "A", "share_rate": 1.0}]
+    r = calculate_registration_compensation("patent", one, reduction_ground="confidentiality_breach")
+    assert r["total_compensation_krw"] == 250_000 and r["reduction"]["before_reduction_krw"] == 500_000
+    none = calculate_registration_compensation("patent", one, reduction_ground="unauthorized_filing_after_report")
+    assert none["total_compensation_krw"] == 0 and none["payable"] is False
+    half = calculate_registration_compensation("patent", one, reduction_ground="unreported_own_filing")
+    assert half["total_compensation_krw"] == 250_000
+    assert calculate_registration_compensation("patent", one, reduction_ground="unreported_own_filing", withhold_all=True)["total_compensation_krw"] == 0
+
+
+def test_disposal_compensation_reduction_national_only():
+    from patent_law_mcp.tools.employee_invention_practice import calculate_disposal_compensation
+
+    r = calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}], reduction_ground="confidentiality_breach")
+    assert r["total_compensation_krw"] == 2_500_000 and "별표 1" in r["reduction"]["basis"]
+    with pytest.raises(ValueError, match="national"):
+        calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}], payout_ratio=0.5,
+                                        profile="public_research", reduction_ground="confidentiality_breach")

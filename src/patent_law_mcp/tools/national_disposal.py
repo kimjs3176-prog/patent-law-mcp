@@ -18,7 +18,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 from pydantic import Field
 
 from patent_law_mcp.policies.policy_manager import PolicyManager, policy_for, policy_manager
-from patent_law_mcp.tools.employee_invention_practice import InventorShare
+from patent_law_mcp.tools.employee_invention_practice import InventorShare, ReductionGround, apply_compensation_reduction
 
 
 def _national() -> PolicyManager:
@@ -173,6 +173,8 @@ def calculate_registration_compensation(
     inventor_shares: Annotated[List[InventorShare], Field(min_length=1)],
     already_paid_for_same_invention: bool = False,
     number_of_rights: Annotated[int, Field(ge=1, le=100)] = 1,
+    reduction_ground: ReductionGround = "none",
+    withhold_all: bool = False,
 ) -> Dict[str, Any]:
     """국가직무발명특허권등 등록보상금 상한을 발명자 지분대로 나눕니다 (영 제16조).
 
@@ -181,6 +183,9 @@ def calculate_registration_compensation(
         inventor_shares: 발명자별 지분 (0~1 소수, 합계 1)
         already_paid_for_same_invention: 같은 직무발명에 이미 등록보상금을 받았으면 True (한 번만 지급)
         number_of_rights: 등록된 권리 수 (서로 다른 직무발명의 권리마다 지급)
+        reduction_ground: 고시 별표 1 감액 사유 — "none", "unauthorized_filing_after_report"(전액 미지급),
+            "unreported_own_filing"(전액 미지급 또는 50%), "confidentiality_breach"(50%)
+        withhold_all: unreported_own_filing에서 전액 미지급을 택하면 True
     """
     pm = _national()
     art = pm.articles
@@ -201,18 +206,23 @@ def calculate_registration_compensation(
                 "reason": f"등록보상금은 동일한 직무발명에 대하여 한 번만 지급합니다 ({art['registration_compensation']} 제2항)."}
 
     pool = per_right * number_of_rights
+    reduce_ratio, reduction = apply_compensation_reduction(pm, reduction_ground, withhold_all)
+    if reduction:
+        reduction["before_reduction_krw"] = pool
+        pool = int(pool * reduce_ratio)
     payouts = [int(pool * s.share_rate) for s in shares]
     payouts[max(range(len(shares)), key=lambda i: shares[i].share_rate)] += pool - sum(payouts)
     return {
         **base,
-        "payable": True,
+        "payable": pool > 0,
         "amount_is_upper_bound": True,
         "total_compensation_krw": pool,
+        **({"reduction": reduction} if reduction else {}),
         "payment_table": [
             {"inventor_name": s.name, "share_rate": f"{s.share_rate * 100:.1f}%", "compensation_krw": p} for s, p in zip(shares, payouts)
         ],
         "checklist": [
-            f"보상금등의 감액기준(별표 1)에 따른 감액·부지급 사유 확인 ({art['compensation_reduction']})",
+            f"감액기준(별표 1) 해당 여부 확인 — 통지 전 자기 명의 출원·이전(전액 미지급), 미신고 출원·이전(전액 미지급 또는 50%), 비밀유지 위반(50%) ({art['compensation_reduction']})",
             "같은 직무발명에 대해 다른 권리(분할·변경 출원 등)로 이미 받았는지 확인",
             f"등록요청 서류(별지 제2호서식 등록요청서, 직무발명 의견서, 등록결정서·등록증 사본, 보상금 지급 서류) 구비 ({art['registration_request']})",
             f"직무발명보상금 비과세 한도 연 {pm.section('income_tax')['tax_free_limit_annual']:,}원 합산 확인 ({art['tax_free_limit']})",

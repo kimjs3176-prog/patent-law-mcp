@@ -84,6 +84,11 @@ NATIONAL_SCHEMA: Dict[str, Dict[str, tuple]] = {
         "result_notice_items": (list,),
         "free_disposal_grounds": (list,),
     },
+    "compensation_reduction": {
+        "unauthorized_filing_after_report": (dict,),
+        "unreported_own_filing": (dict,),
+        "confidentiality_breach": (dict,),
+    },
     "trustee_obligations": {
         "quarterly_report_day": (int,),
         "change_notice_days": (int,),

@@ -7,7 +7,7 @@
 - evaluate_exclusive_renewal: 전용실시계약 갱신 검토
 """
 
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -124,6 +124,30 @@ def _national() -> PolicyManager:
 
 
 EmploymentStatus = Literal["employed", "retired"]
+ReductionGround = Literal["none", "unauthorized_filing_after_report", "unreported_own_filing", "confidentiality_breach"]
+
+
+def apply_compensation_reduction(
+    pm: PolicyManager, ground: str, withhold_all: bool = False
+) -> Tuple[float, Optional[Dict[str, Any]]]:
+    """고시 별표 1 감액기준을 적용해 (지급 비율, 설명)을 돌려줍니다. ground가 none이면 (1.0, None)."""
+    if ground == "none":
+        return 1.0, None
+    table = pm.section("compensation_reduction")
+    if ground not in table:
+        raise ValueError(f"reduction_ground는 none, {', '.join(table)} 중 하나여야 합니다.")
+    entry = table[ground]
+    options = entry["pay_ratio_options"]
+    ratio = min(options) if withhold_all else max(options)
+    note = entry["rule"]
+    if len(options) > 1:
+        note += " — " + ("전액 미지급을 선택함" if withhold_all else "50% 감액을 적용함 (전액 미지급하려면 withhold_all=True)")
+    return ratio, {
+        "ground": entry["description"],
+        "rule": note,
+        "pay_ratio": ratio,
+        "basis": pm.articles["compensation_reduction"],
+    }
 
 
 class InventorShare(BaseModel):
@@ -147,6 +171,8 @@ def calculate_disposal_compensation(
     payout_ratio: Annotated[Optional[float], Field(gt=0, le=1)] = None,
     deduct_direct_expenses: Optional[bool] = None,
     profile: Optional[ProfileName] = None,
+    reduction_ground: ReductionGround = "none",
+    withhold_all: bool = False,
 ) -> Dict[str, Any]:
     """기술료(처분·실시) 수입으로 발명자 보상금을 산출하고 발명자별 비과세·과세 금액을 나눕니다.
 
@@ -161,6 +187,9 @@ def calculate_disposal_compensation(
         payout_ratio: 보상 비율 0~1 (비우면 프로파일 값, 프로파일 값이 없으면 필수)
         deduct_direct_expenses: 직접비용 공제 여부 (비우면 프로파일 값)
         profile: "national"(국유특허 처분보상금), "public_research", "private_company". 비우면 기본 프로파일
+        reduction_ground: [국유특허] 고시 별표 1 감액 사유 — "none", "unauthorized_filing_after_report"(신고 후 통지 없이 자기 명의 출원·이전: 전액 미지급),
+            "unreported_own_filing"(미신고 자기 명의 출원·이전: 전액 미지급 또는 50%), "confidentiality_breach"(비밀유지 위반: 50%)
+        withhold_all: unreported_own_filing에서 전액 미지급을 택하면 True
     """
     shares = [s if isinstance(s, InventorShare) else InventorShare.model_validate(s) for s in inventor_shares]
     if not shares:
@@ -191,7 +220,15 @@ def calculate_disposal_compensation(
     else:
         base = contract_income_krw
         base_note = f"처분수입금 {contract_income_krw:,}원 (정책상 비용 공제 안 함)"
+    reduction = None
+    if reduction_ground != "none":
+        if not pm.is_national:
+            raise ValueError("reduction_ground(고시 별표 1 감액기준)는 국유특허(national) 프로파일에만 적용됩니다.")
+        _, reduction = apply_compensation_reduction(pm, reduction_ground, withhold_all)
     pool = int(base * ratio)
+    if reduction:
+        reduction["before_reduction_krw"] = pool
+        pool = int(pool * reduction["pay_ratio"])
 
     # 원 단위 내림 후 남는 금액은 지분이 가장 큰 발명자에게 더해 합계를 맞춘다
     payouts = [int(pool * s.share_rate) for s in shares]
@@ -238,13 +275,14 @@ def calculate_disposal_compensation(
         "payout_ratio": ratio,
         "payout_ratio_source": "호출 시 입력" if payout_ratio is not None else "정책 YAML",
         "total_compensation_krw": pool,
+        **({"reduction": reduction} if reduction else {}),
         "payment_table": table,
         "tax_basis": f"{art['tax_free_limit']} — 직무발명보상금 비과세 한도 연 {limit:,}원 (재직·퇴직 수령분 합산)",
         "administrative_checklist": [
             "처분수입금 세입 조치 증빙 첨부",
             "발명자 전원의 지분 합의서 대조",
             "올해 이미 지급된 직무발명보상금(비과세 적용분) 확인",
-            "보상금 감액 사유 해당 여부 점검",
+            "보상금 감액 사유(고시 별표 1: 통지 전 자기 명의 출원·미신고 출원·비밀유지 위반) 해당 여부 점검",
         ],
         "legal_audit_basis": pm.audit_block("처분보상금", "보상 비율", "특수관계"),
     }
