@@ -28,7 +28,7 @@
 | `PATENT_LAW_MCP_ALLOW_ANONYMOUS` | **필수 (공개 운영)** | `1` | 누구나 로그인·토큰 없이 쓸 수 있게 공개합니다. 도구는 모두 읽기 전용이라 서버 데이터를 바꿀 수 없습니다 |
 | `PATENT_LAW_MCP_TOKEN` | 넣지 않음 | — | 넣으면 공개 대신 토큰 방식이 됩니다 (아래 "토큰 방식으로 바꾸려면") |
 | `KIPRIS_API_KEY` | 선택 | KIPRIS Plus 인증키 | 특허 검색·출원번호 조회. 없으면 등록·공개번호 조회는 Google Patents로 동작 |
-| `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). Open API 신청 때 호출 서버의 IP·도메인을 등록해야 하며, Vercel은 나가는 IP가 고정되지 않아 동작하지 않을 수 있습니다. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
+| `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). 운영 배포(patent-law-mcp.vercel.app)에서 2026-11-22 동작 확인. Open API 신청 정보의 IP·도메인 등록 조건에 따라 막히면 이 값을 지우십시오. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
 | `PATENT_LAW_MCP_PROFILE` | 선택 | `national` (기본) | `public_research`(대학·출연연), `private_company`(민간 기업) |
 | `PATENT_LAW_MCP_CACHE` | 설정 불필요 | — | Vercel에서는 자동으로 `/tmp/patent-law-mcp/cache.sqlite3`를 씁니다 (`off`로 끌 수 있음) |
 
@@ -72,13 +72,14 @@ vercel --prod
 ## 3. 주소 확인
 
 1. 프로젝트 첫 화면의 **Domains**에 보이는 주소(`<프로젝트>.vercel.app`)를 엽니다. 배포마다 생기는 긴 주소(`…-<해시>-….vercel.app`)가 아니라 이 **고정 주소**를 쓰십시오.
-2. 브라우저에서 `https://<프로젝트>.vercel.app/` 을 열면 아래처럼 설정 상태가 보입니다 (토큰·키 값은 표시하지 않음).
+2. 브라우저에서 `https://<프로젝트>.vercel.app/` 을 열면 **주요 기능·사용 안내 페이지**가 나옵니다. 위쪽 상태 표시(운영 중·공개, 도구 수, 원문 대조일, 법령 조회·KIPRIS 검색 가능 여부)로 설정을 확인할 수 있습니다.
+3. 설정 상태를 JSON으로 보려면 `https://<프로젝트>.vercel.app/status` 를 엽니다 (토큰·키 값은 표시하지 않음).
 
 ```json
-{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "없음 (공개)", "kipris_api_key": true, "law_oc": false, "profile": "national"}
+{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "없음 (공개)", "kipris_api_key": false, "law_oc": true, "profile": "national", "tool_count": 33, "source_text_verified_on": "2026-11-22"}
 ```
 
-3. 커넥터 주소는 끝에 `/mcp`를 붙인 **`https://<프로젝트>.vercel.app/mcp`** 입니다. 이 주소를 사용자에게 알려 주고, [README](../README.md)의 커넥터 등록 절차를 안내하십시오.
+4. 커넥터 주소는 끝에 `/mcp`를 붙인 **`https://<프로젝트>.vercel.app/mcp`** 입니다. 이 주소를 사용자에게 알려 주고, [README](../README.md)의 커넥터 등록 절차를 안내하십시오.
 
 ## 4. 사용량을 줄이는 저장소 설정 (`vercel.json`, 자동 적용)
 
@@ -111,8 +112,8 @@ vercel --prod
 
 | 증상 | 원인과 조치 |
 |:---|:---|
-| `/`를 열면 Vercel 로그인 화면이 나옴 | Deployment Protection이 켜져 있습니다. 고정 주소(`<프로젝트>.vercel.app`)를 쓰거나, **Settings → Deployment Protection**에서 Production 보호를 끄십시오. 커넥터 요청은 Anthropic 서버에서 오므로 Vercel 로그인을 통과할 수 없습니다 |
-| `"auth": "미설정 …"` | 공개 설정이 반영되지 않았습니다. `PATENT_LAW_MCP_ALLOW_ANONYMOUS=1` 확인 후 **Redeploy** |
+| `/`를 열면 안내 페이지 대신 Vercel 로그인 화면이 나옴 | Deployment Protection이 켜져 있습니다. 고정 주소(`<프로젝트>.vercel.app`)를 쓰거나, **Settings → Deployment Protection**에서 Production 보호를 끄십시오. 커넥터 요청은 Anthropic 서버에서 오므로 Vercel 로그인을 통과할 수 없습니다 |
+| `/status`의 `"auth": "미설정 …"` | 공개 설정이 반영되지 않았습니다. `PATENT_LAW_MCP_ALLOW_ANONYMOUS=1` 확인 후 **Redeploy** |
 | 커넥터 연결 시 401 | `PATENT_LAW_MCP_TOKEN`이 남아 있어 토큰 방식으로 동작 중입니다. 지우고 다시 배포하십시오 |
 | 커넥터 연결 시 503 | `PATENT_LAW_MCP_ALLOW_ANONYMOUS=1`이 반영되지 않았습니다. 환경변수 확인 후 **Redeploy** |
 | 404 | 주소 끝의 `/mcp`가 빠졌는지 확인 |

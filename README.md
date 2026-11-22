@@ -33,7 +33,7 @@ Claude > 총판매예정수량 4,500개 × 52,000원 × 0.2 × 3% = 1,404,000원
 
 | 커넥터 주소 |
 |:---|
-| `https://<배포 주소>/mcp` |
+| **`https://patent-law-mcp.vercel.app/mcp`** |
 
 ### 개인 계정 (Free·Pro·Max)
 

@@ -13,6 +13,7 @@ lifespan 이벤트에 의존하지 않습니다.
 
 import json
 import os
+from pathlib import Path
 
 if os.environ.get("VERCEL"):  # Vercel이 자동으로 넣는 변수. 함수 파일시스템은 /tmp만 쓸 수 있다
     os.environ.setdefault("PATENT_LAW_MCP_CACHE", "/tmp/patent-law-mcp/cache.sqlite3")
@@ -24,8 +25,39 @@ from patent_law_mcp.http_app import BearerAuthMiddleware  # noqa: E402
 from patent_law_mcp.server import DISPLAY_NAME, mcp  # noqa: E402
 
 MCP_PATHS = ("/mcp", "/mcp/")
+PUBLIC_PATHS = ("", "/", "/status", "/status/")  # 토큰 없이 열리는 안내·상태 경로 (도구 실행 없음)
+INDEX_HTML = (Path(__file__).parent / "web" / "index.html").read_bytes()
 # 공개 HTTPS 배포에서는 DNS rebinding 보호(로컬 서버용)가 필요 없고, Vercel 도메인이 배포마다 달라 Host 검사를 끕니다.
 _SECURITY = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+
+def _status() -> dict:
+    from patent_law_mcp.policies.policy_manager import _baseline_verified_on
+
+    token_set = bool(os.environ.get("PATENT_LAW_MCP_TOKEN", "").strip())
+    anonymous = os.environ.get("PATENT_LAW_MCP_ALLOW_ANONYMOUS", "").strip().lower() in ("1", "true", "yes")
+    return {
+        "name": DISPLAY_NAME,
+        "mcp_endpoint": "/mcp",
+        "auth": "Bearer 토큰" if token_set else ("없음 (공개)" if anonymous else "미설정 — /mcp 요청이 거부됩니다"),
+        "kipris_api_key": bool(os.environ.get("KIPRIS_API_KEY", "").strip()),
+        "law_oc": bool(os.environ.get("LAW_OC", "").strip()),
+        "profile": os.environ.get("PATENT_LAW_MCP_PROFILE", "national"),
+        "tool_count": len(mcp._tool_manager._tools),
+        "source_text_verified_on": _baseline_verified_on(),
+    }
+
+
+def _wants_html(scope) -> bool:
+    accept = dict(scope.get("headers") or []).get(b"accept", b"").decode("latin-1")
+    return "text/html" in accept
+
+
+async def _send_html(send) -> None:
+    await send({"type": "http.response.start", "status": 200, "headers": [
+        (b"content-type", b"text/html; charset=utf-8"), (b"cache-control", b"public, max-age=300"),
+    ]})
+    await send({"type": "http.response.body", "body": INDEX_HTML})
 
 
 async def _send_json(send, status: int, body: dict) -> None:
@@ -45,17 +77,11 @@ async def mcp_app(scope, receive, send):
     if scope["type"] != "http":
         return
     path = scope.get("path", "")
-    if path in ("", "/"):
-        token_set = bool(os.environ.get("PATENT_LAW_MCP_TOKEN", "").strip())
-        anonymous = os.environ.get("PATENT_LAW_MCP_ALLOW_ANONYMOUS", "").strip().lower() in ("1", "true", "yes")
-        await _send_json(send, 200, {
-            "name": DISPLAY_NAME,
-            "mcp_endpoint": "/mcp",
-            "auth": "Bearer 토큰" if token_set else ("없음 (공개)" if anonymous else "미설정 — /mcp 요청이 거부됩니다"),
-            "kipris_api_key": bool(os.environ.get("KIPRIS_API_KEY", "").strip()),
-            "law_oc": bool(os.environ.get("LAW_OC", "").strip()),
-            "profile": os.environ.get("PATENT_LAW_MCP_PROFILE", "national"),
-        })
+    if path in ("", "/") and _wants_html(scope):  # 브라우저: 주요 기능·사용 안내 페이지
+        await _send_html(send)
+        return
+    if path in PUBLIC_PATHS:  # 프로그램·배포 확인: 설정 상태 JSON (토큰·키 값은 넣지 않음)
+        await _send_json(send, 200, _status())
         return
     if path not in MCP_PATHS:
         await _send_json(send, 404, {"error": "not found", "mcp_endpoint": "/mcp"})
@@ -66,10 +92,10 @@ async def mcp_app(scope, receive, send):
 
 
 def _public_status_or(protected):
-    """'/'(상태 확인)는 토큰 없이 열어 두고, 나머지 경로만 보호한다. 배포 직후 주소 확인용."""
+    """안내 페이지·상태(/ , /status)는 토큰 없이 열어 두고, 나머지 경로만 보호한다."""
 
     async def app(scope, receive, send):
-        if scope["type"] == "http" and scope.get("path", "") in ("", "/"):
+        if scope["type"] == "http" and scope.get("path", "") in PUBLIC_PATHS:
             return await mcp_app(scope, receive, send)
         return await protected(scope, receive, send)
 
@@ -84,7 +110,7 @@ def build_app():
         return mcp_app
 
     async def refuse(scope, receive, send):  # 설정 누락을 조용히 공개 운영으로 넘기지 않는다
-        if scope["type"] == "lifespan" or (scope["type"] == "http" and scope.get("path", "") in ("", "/")):
+        if scope["type"] == "lifespan" or (scope["type"] == "http" and scope.get("path", "") in PUBLIC_PATHS):
             return await mcp_app(scope, receive, send)
         if scope["type"] == "http":
             await _send_json(send, 503, {
