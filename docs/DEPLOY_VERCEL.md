@@ -28,7 +28,7 @@
 | `PATENT_LAW_MCP_ALLOW_ANONYMOUS` | **필수 (공개 운영)** | `1` | 누구나 로그인·토큰 없이 쓸 수 있게 공개합니다. 도구는 모두 읽기 전용이라 서버 데이터를 바꿀 수 없습니다 |
 | `PATENT_LAW_MCP_TOKEN` | 넣지 않음 | — | 넣으면 공개 대신 토큰 방식이 됩니다 (아래 "토큰 방식으로 바꾸려면") |
 | `KIPRIS_API_KEY` | 선택 | KIPRIS Plus 인증키 | 특허 검색·출원번호 조회. 없으면 등록·공개번호 조회는 Google Patents로 동작 |
-| `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). Open API 신청 때 호출 서버의 IP·도메인을 등록해야 하며, Vercel은 나가는 IP가 고정되지 않아 동작하지 않을 수 있습니다. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
+| `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). 운영 배포(patent-law-mcp.vercel.app)에서 2026-11-22 동작 확인. Open API 신청 정보의 IP·도메인 등록 조건에 따라 막히면 이 값을 지우십시오. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
 | `PATENT_LAW_MCP_PROFILE` | 선택 | `national` (기본) | `public_research`(대학·출연연), `private_company`(민간 기업) |
 | `PATENT_LAW_MCP_CACHE` | 설정 불필요 | — | Vercel에서는 자동으로 `/tmp/patent-law-mcp/cache.sqlite3`를 씁니다 (`off`로 끌 수 있음) |
 
