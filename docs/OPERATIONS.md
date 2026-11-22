@@ -155,7 +155,7 @@ uv run python scripts/check_law_sources.py --update
 
 ## 🔁 업스트림 동기화
 
-요약 효과 수치 근거 확인 규칙은 [patent-summary-wizard](https://github.com/kimjs3176-prog/patent-summary-wizard)에서, 공보 특허권자 추출 규칙은 [patent-video-skill](https://github.com/kimjs3176-prog/patent-video-skill)에서 옮겨 왔습니다. 매일 GitHub Actions가 변경을 확인해 `upstream-sync` 이슈를 열며, 반영 절차는 [`upstream/README.md`](../upstream/README.md)에 있습니다.
+요약 효과 수치 근거 확인과 기술사업화 평가(체크리스트·V-RAY·TRL 정합성) 규칙은 [patent-summary-wizard](https://github.com/kimjs3176-prog/patent-summary-wizard)에서, 공보 특허권자 추출 규칙은 [patent-video-skill](https://github.com/kimjs3176-prog/patent-video-skill)에서 옮겨 왔습니다. 매일 GitHub Actions가 변경을 확인해 `upstream-sync` 이슈를 열며, 반영 절차는 [`upstream/README.md`](../upstream/README.md)에 있습니다.
 
 <a id="development"></a>
 

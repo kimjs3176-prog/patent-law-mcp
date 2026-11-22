@@ -100,7 +100,7 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     # 0. 서버 기본
     tools = await session.list_tools()
     names = {t.name for t in tools.tools}
-    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 25 else "FAIL", f"{len(names)}개"))
+    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 26 else "FAIL", f"{len(names)}개"))
 
     # 1. 기술이전 상담 (국유특허·실데이터)
     s = "1. 기술이전 상담"
@@ -180,6 +180,14 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
 
     # 7. 요약 근거 확인 (업스트림 규칙)
     s = "7. 요약 근거 확인"
+    await step(s, "기술사업화 평가 기준표", "evaluate_patent_commercialization", {"patent_id": "10-1070281"},
+               lambda e, d: ok(not e and d["mode"] == "평가 기준 안내" and len(d["checklist"]["market"]) == 8, str(d)[:120]))
+    await step(s, "기술사업화 평가 채점", "evaluate_patent_commercialization",
+               {"patent_id": "10-1070281", "trl": 8, "ipc_codes": ["A23L 7/10"], "filing_date": "2010-06-30",
+                "registration_number": "10-1070281", "as_of": "2026-11-22",
+                "checked_items": [{"id": "T-A1", "evidence": "증자된 반죽을 펀칭하는 단계"}, {"id": "B2", "evidence": "쌀가루를 증자하는 단계"}]},
+               lambda e, d: ok(not e and d["scores"]["technology"]["score"] == 68 and d["scores"]["market"]["score"] == 65
+                               and "| **종합** |" in d["report_markdown"], str(d)[:160]))
     await step(s, "효과 수치 근거", "ground_summary_figures",
                {"summary_text": "에너지를 30% 절감한다. 수율이 2배 향상된다.", "source_text": "본 발명은 수율을 2배 향상시킨다."},
                lambda e, d: ok(not e and d["removed_figures"] == ["30%"] and "2배" in d["sanitized_text"], str(d)[:160]))
@@ -297,7 +305,7 @@ async def http_session() -> List[Result]:
                 await session.initialize()
                 n = len((await session.list_tools()).tools)
                 _, data = await call(session, "calculate_patent_term", {"application_date": "2010-06-30"})
-                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 25 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
+                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 26 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
         r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                        headers={"accept": "application/json, text/event-stream"}, trust_env=False)
         results.append(("13. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))

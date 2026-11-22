@@ -7,7 +7,7 @@
 지식재산처 국가직무발명특허권 — 신고부터 보상·처분·수탁기관 정산·심판까지
 
 [![CI](https://github.com/kimjs3176-prog/patent-law-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kimjs3176-prog/patent-law-mcp/actions/workflows/ci.yml)
-![Tools](https://img.shields.io/badge/tools-25-2EA44F)
+![Tools](https://img.shields.io/badge/tools-26-2EA44F)
 ![Basis](https://img.shields.io/badge/%EA%B8%B0%EC%A4%80-%EC%A7%80%EC%8B%9D%EC%9E%AC%EC%82%B0%EC%B2%98%EA%B3%A0%EC%8B%9C%20%EC%A0%9C2025--4%ED%98%B8-1F6FEB)
 
 [커넥터 등록](#connector) · [대화에서 쓰기](#use) · [할 수 있는 일](#tools) · [문제 해결](#troubleshooting)
@@ -95,7 +95,7 @@ Claude > 총판매예정수량 4,500개 × 52,000원 × 0.2 × 3% = 1,404,000원
 > [!TIP]
 > 특허번호·금액·날짜처럼 정확해야 하는 값은 질문에 직접 적어 주십시오. 도구는 원문에 없는 값을 추측해 채우지 않고 "미확인"으로 돌려줍니다.
 
-## 🧰 할 수 있는 일 (도구 25개)
+## 🧰 할 수 있는 일 (도구 26개)
 
 ### 1. 국가직무발명특허권 업무 — 핵심
 
@@ -130,6 +130,7 @@ Claude > 총판매예정수량 4,500개 × 52,000원 × 0.2 × 3% = 1,404,000원
 | `search_patents` · `fetch_patent_smart` | 특허 검색(KIPRIS 키 있으면 공식, 없으면 Google Patents), 번호 검증 조회(해외 포함). 가져온 원문은 Claude가 직접 읽고 분석합니다 |
 | `search_laws` · `get_law_article` | 법령·행정규칙 검색, 조문 원문·시행일 |
 | `parse_raw_patent_text` | 붙여넣은 공보를 명칭·번호·출원인·IPC·초록·청구항으로 분해 |
+| `evaluate_patent_commercialization` | **기술사업화 평가** — 기술성·시장성·사업성 점수·총점·TRL을 고정 양식 보고서로. Claude는 체크리스트에서 원문으로 확인된 항목만 고르고, 점수 합산·V-RAY 사업성 보정·결론 문장은 도구가 계산 (같은 입력 → 같은 점수·양식) |
 | `ground_summary_figures` | 작성한 요약문에서 원문에 근거 없는 효과 수치 걸러내기 |
 | `verify_tech_transfer_scope_match` | 청구항 구성요소와 제품 설명 1차 대조 (침해 감정 아님) |
 
