@@ -71,6 +71,12 @@ NETWORK = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=
 
 def register(fn, name: str, description: str, annotations: ToolAnnotations = LOCAL) -> None:
     mcp.tool(name=name, description=description, annotations=annotations)(fn)
+    # 모르는 인자는 오류로 돌려준다. 기본 동작(조용히 무시)이면 인자 이름을 잘못 쓴 호출이
+    # 기본값으로 계산되어, 예컨대 갱신 사유가 있는데도 '갱신 사유 없음'으로 답하게 된다.
+    tool = mcp._tool_manager._tools[name]
+    tool.fn_metadata.arg_model.model_config["extra"] = "forbid"
+    tool.fn_metadata.arg_model.model_rebuild(force=True)
+    tool.parameters["additionalProperties"] = False
 
 
 # 1. 국가직무발명특허권 업무 (지식재산처 규정·시행규칙·고시 기준, 핵심)

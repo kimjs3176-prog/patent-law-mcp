@@ -272,6 +272,7 @@ def get_policy_table(profile: Optional[ProfileName] = None) -> Dict[str, Any]:
         "policy_file": str(pm.path),
         "available_profiles": list(PROFILE_FILES),
         "how_to_update": "이 파일의 값을 고치면 다음 도구 호출부터 반영됩니다 (서버 재시작 불필요).",
+        "source_text_verified_on": _baseline_verified_on(),
         **pm.policy,
     }
 

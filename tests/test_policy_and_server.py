@@ -125,3 +125,19 @@ def test_env_profile_switch_keeps_national_only_tools_national(monkeypatch):
     monkeypatch.setenv("PATENT_LAW_MCP_PROFILE", "public_research")
     assert evaluate_unutilized_free_license(5)["eligible_for_free_license"] is True
     assert design_licensing_terms("x", "exclusive")["legal_audit_basis"]["profile"] == "public_research"
+
+
+def test_unknown_tool_argument_is_rejected():
+    # 인자 이름을 잘못 쓰면 기본값으로 조용히 계산하지 말고 오류로 알려야 한다 (예: 갱신 사유 2호를 놓쳐 '사유 없음'으로 답하는 문제)
+    with pytest.raises(Exception, match="needs_regulatory_testing"):
+        asyncio.run(mcp.call_tool("evaluate_exclusive_renewal", {
+            "cumulative_commercial_revenue_krw": 1, "cumulative_investment_krw": 2, "expiry_days_remaining": 40,
+            "needs_regulatory_testing": True,
+        }))
+    ok = asyncio.run(mcp.call_tool("evaluate_exclusive_renewal", {
+        "cumulative_commercial_revenue_krw": 9, "cumulative_investment_krw": 5, "expiry_days_remaining": 40,
+        "followup_research_or_regulatory_tests": True,
+    }))
+    assert "갱신 사유 충족" in str(ok)
+    tools = asyncio.run(mcp.list_tools())
+    assert all(t.inputSchema.get("additionalProperties") is False for t in tools)

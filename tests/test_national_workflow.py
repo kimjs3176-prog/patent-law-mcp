@@ -244,7 +244,7 @@ def test_disposal_comp_flags_regulation_floor():
     from patent_law_mcp.tools.employee_invention_practice import calculate_disposal_compensation
 
     r = calculate_disposal_compensation(3_000_000, [{"name": "A", "share_rate": 1.0}], direct_expenses_krw=5_000_000)
-    assert "1,500,000원 이상" in r["regulation_floor_check"]
+    assert r["regulation_floor_check"]["regulation_text_floor_krw"] == 1_500_000 and r["regulation_floor_check"]["notice_formula_krw"] == 0
     ok = calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}])
     assert "regulation_floor_check" not in ok
 

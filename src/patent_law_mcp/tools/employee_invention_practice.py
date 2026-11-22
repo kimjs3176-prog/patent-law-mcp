@@ -284,10 +284,13 @@ def calculate_disposal_compensation(
         "total_compensation_krw": pool,
         **({"reduction": reduction} if reduction else {}),
         **(
-            {"regulation_floor_check": (
-                f"규정 제17조 제1항 문언(처분수입금의 100분의 50 이상)으로 보면 {int(contract_income_krw * 0.5):,}원 이상인데, "
-                f"고시 산식(직접비용 공제 후 50%) 결과는 {pool:,}원입니다. 적용 기준을 지식재산처에 확인하십시오."
-            )}
+            {"regulation_floor_check": {
+                "regulation_text_floor_krw": int(contract_income_krw * 0.5),
+                "notice_formula_krw": pool,
+                "difference_krw": int(contract_income_krw * 0.5) - pool,
+                "note": "규정 제17조 제1항 문언(처분수입금의 100분의 50 이상)과 고시 제11조 제2항 산식(직접비용 공제 후 50%)의 차이. "
+                        "이 도구는 고시 산식으로 계산했으며, 어느 기준을 적용할지는 지식재산처 확인 사항입니다.",
+            }}
             if pm.is_national and deduct and reduction is None and pool < int(contract_income_krw * 0.5)
             else {}
         ),
