@@ -112,7 +112,7 @@ footer .links{display:flex;gap:16px;flex-wrap:wrap}
 
 <nav class="toc" aria-label="목차">
   <div class="wrap">
-    <a href="#start">시작하기</a><a href="#ask">이렇게 물어보세요</a><a href="#features">주요 기능</a><a href="#principles">답변 원칙</a><a href="#help">문제 해결</a><a href="#kipris">KIPRIS 검색 켜기</a>
+    <a href="#start">시작하기</a><a href="#ask">이렇게 물어보세요</a><a href="#features">주요 기능</a><a href="#principles">답변 원칙</a><a href="#help">문제 해결</a><a href="#kipris">KIPRIS 키가 없을 때</a>
   </div>
 </nav>
 
@@ -220,7 +220,7 @@ footer .links{display:flex;gap:16px;flex-wrap:wrap}
           <tr><td>커넥터 추가 시 연결 실패</td><td>주소가 <code>https://</code>로 시작하고 끝에 <code>/mcp</code>가 붙어 있는지</td></tr>
           <tr><td>대화에서 도구를 쓰지 않음</td><td>입력창 <b>+ → 커넥터</b>에서 이 도구가 켜져 있는지</td></tr>
           <tr><td>429 / 요청이 너무 많음</td><td>짧은 시간에 요청이 몰려 잠시 제한됐습니다. 1분쯤 뒤 다시 시도</td></tr>
-          <tr><td>특허 검색이 안 됨</td><td>서버에 KIPRIS 인증키가 없으면 키워드 검색·출원번호 조회는 쓸 수 없습니다. 등록·공개번호 조회는 동작합니다. 운영자는 <a href="#kipris">KIPRIS 검색 켜기</a>를 참고하세요</td></tr>
+          <tr><td>특허 검색이 안 됨</td><td>서버에 KIPRIS 인증키가 없으면 키워드 검색·출원번호 조회는 쓸 수 없습니다. 등록·공개번호 조회는 동작합니다. 운영자는 <a href="#kipris">KIPRIS 키가 없을 때</a>를 참고하세요</td></tr>
           <tr><td>데스크톱 앱에 안 보임</td><td>같은 계정으로 로그인했는지 확인하고 앱을 완전히 종료했다가 다시 열기</td></tr>
         </tbody>
       </table>
@@ -228,31 +228,40 @@ footer .links{display:flex;gap:16px;flex-wrap:wrap}
   </section>
 
   <section id="kipris">
-    <h2>🔑 KIPRIS 검색 켜기 <small style="font-size:15px;color:var(--muted);font-weight:600">운영자용</small></h2>
-    <p class="sub">특허 키워드 검색과 출원번호 조회는 KIPRIS Plus 인증키가 있어야 동작합니다. 키는 <b>서버(Vercel)에 한 번만</b> 넣으면 모든 사용자에게 적용되며, 커넥터 사용자는 아무것도 넣을 필요가 없습니다.</p>
+    <h2>🔑 KIPRIS 인증키가 없을 때</h2>
+    <p class="sub">이 서버에 KIPRIS 인증키가 없으면 <b>특허 키워드 검색</b>과 <b>출원번호 조회</b>만 쓸 수 없습니다. 나머지는 모두 동작하고, 아래 방법으로 충분히 대신할 수 있습니다. (위쪽 상태 표시에서 현재 설정을 확인하세요.)</p>
     <div class="steps">
       <div class="step">
-        <h3>인증키 발급</h3>
+        <h3>키 없이도 되는 것</h3>
         <ol>
-          <li><a href="https://plus.kipris.or.kr" target="_blank" rel="noopener">KIPRIS Plus</a> 회원가입·로그인</li>
-          <li><b>데이터 신청</b>에서 Open API <b>특허·실용신안 정보검색</b>(공개·등록공보 서지) 상품 신청 — 절차는 사이트의 <b>가입 및 신청 안내</b> 참고</li>
-          <li>승인 후 발급된 <b>인증키</b> 확인</li>
+          <li><b>등록번호·공개번호</b>로 특허 조회 (예: <span style="white-space:nowrap">“10-1070281</span> 특허 요약해 줘”)</li>
+          <li>권리 상태·존속기간·연차료 확인</li>
+          <li>공보 원문을 붙여 넣어 분석·요약·권리범위 대조</li>
+          <li>국유특허 업무 도구 전부 (보상·처분·실시료·수탁기관 등)</li>
         </ol>
       </div>
       <div class="step">
-        <h3>Vercel에 넣기</h3>
+        <h3>KIPRIS 웹에서 찾아 넘기기</h3>
         <ol>
-          <li>Vercel 프로젝트 → <b>Settings → Environment Variables</b></li>
-          <li>Key <code>KIPRIS_API_KEY</code>, Value에 인증키, 환경 <b>Production</b> → <b>Save</b></li>
-          <li><b>Deployments</b> → 최근 배포 <b>⋯ → Redeploy</b> (다시 배포해야 반영)</li>
+          <li><a href="https://www.kipris.or.kr" target="_blank" rel="noopener">KIPRIS</a>(로그인 없이 무료)에서 키워드·출원인으로 검색</li>
+          <li>찾은 특허의 <b>등록번호</b>나 <b>공개번호</b>를 Claude에 알려 주거나</li>
+          <li>공보 전문을 복사해 붙여 넣고 “이 공보 분석해 줘”</li>
         </ol>
       </div>
       <div class="step">
-        <h3>확인</h3>
-        <p>이 페이지를 새로 고쳐 위쪽 상태에 <b>KIPRIS 검색 가능</b>이 보이면 끝입니다. Claude에게 “KIPRIS에서 ‘굳지 않는 떡’ 특허 검색해 줘”처럼 물어 확인하세요.</p>
+        <h3>내 인증키로 검색하기</h3>
+        <ol>
+          <li><a href="https://plus.kipris.or.kr" target="_blank" rel="noopener">KIPRIS Plus</a> → <b>데이터 신청</b> → Open API <b>특허·실용신안 정보검색</b> 신청 후 인증키 발급</li>
+          <li>커넥터를 추가할 때 <b>요청 헤더(Request headers)</b>에 이름 <code>x-api-key</code>, 값에 인증키만 입력 (<code>Bearer</code> 붙이지 않음)</li>
+          <li>이미 추가했다면 커넥터를 삭제하고 다시 추가 (인증 설정은 나중에 바꿀 수 없음)</li>
+        </ol>
       </div>
     </div>
-    <div class="note">⚠️ 인증키는 Claude 대화창이나 커넥터 설정에 붙여 넣지 마세요. 이 서버는 키를 Vercel 환경변수에서만 읽고, 상태 표시에도 키 값은 나오지 않습니다. 공개 운영에서는 모든 사용자가 이 키의 KIPRIS 호출 한도를 함께 쓰므로 Vercel <b>Firewall</b>의 요청 수 제한을 함께 걸어 두세요.</div>
+    <div class="note">🔒 내 인증키는 Claude 계정의 커넥터 설정에만 저장되고, 요청할 때마다 이 서버로 전달되어 <b>그 요청에만</b> 쓰입니다. 서버는 키를 저장하거나 기록하지 않으며 다른 사용자의 요청에 쓰지 않습니다. 키를 대화창에 붙여 넣지는 마세요. <b>요청 헤더</b> 항목은 베타 기능이라 계정에 따라 보이지 않을 수 있습니다 — 그때는 위 1·2번 방법을 쓰세요.</div>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-weight:700">운영자: 서버에 KIPRIS 키를 넣어 모든 사용자에게 켜기</summary>
+      <div class="note" style="margin-top:10px">Vercel 프로젝트 → <b>Settings → Environment Variables</b>에 <code>KIPRIS_API_KEY</code>(Production)를 넣고 <b>Deployments → ⋯ → Redeploy</b>. 위쪽 상태가 <b>KIPRIS 검색 가능</b>으로 바뀌면 끝입니다. 공개 운영에서는 모든 사용자가 이 키의 호출 한도를 함께 쓰므로 Vercel <b>Firewall</b>의 요청 수 제한을 함께 걸어 두세요. 사용자가 헤더로 본인 키를 보내면 그 요청에는 사용자 키가 우선합니다.</div>
+    </details>
   </section>
 </main>
 
@@ -289,7 +298,7 @@ footer .links{display:flex;gap:16px;flex-wrap:wrap}
     if (d.tool_count) { box.appendChild(pill("", "도구 " + d.tool_count + "개")); document.getElementById("tool-count").textContent = "도구 " + d.tool_count + "개"; }
     if (d.source_text_verified_on) { box.appendChild(pill("", "원문 대조 " + d.source_text_verified_on)); document.getElementById("verified-on").textContent = "(최근 기준선 대조일 " + d.source_text_verified_on + ")"; }
     box.appendChild(pill(d.law_oc ? "" : "warn", d.law_oc ? "법령 조문 조회 가능" : "법령 조문 조회 꺼짐"));
-    var kp = pill(d.kipris_api_key ? "" : "warn", d.kipris_api_key ? "KIPRIS 검색 가능" : "KIPRIS 검색 꺼짐 — 켜는 방법");
+    var kp = pill(d.kipris_api_key ? "" : "warn", d.kipris_api_key ? "KIPRIS 검색 가능" : "KIPRIS 검색 꺼짐 — 대신 쓰는 법");
     if (!d.kipris_api_key) { var a = document.createElement("a"); a.href = "#kipris"; a.style.textDecoration = "none"; a.appendChild(kp); kp = a; }
     box.appendChild(kp);
   }).catch(function () {
