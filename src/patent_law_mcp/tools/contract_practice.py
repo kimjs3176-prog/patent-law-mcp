@@ -228,10 +228,13 @@ def review_licensing_contract(
         else:
             amounts = [a for s in hits for a in _amounts(s)]
             days = [int(d) for s in hits for d in _DAYS_RE.findall(s)]
+            problems = []
             if amounts and max(amounts) < min_royalty:
-                checklist.append(_item(name, "FAIL", f"기재 금액 {max(amounts):,}원이 기준 {min_royalty:,}원보다 적습니다.", hits[0]))
-            elif days and min(days) > deadline:
-                checklist.append(_item(name, "FAIL", f"납부 기한 {min(days)}일이 기준 {deadline}일보다 깁니다.", hits[0]))
+                problems.append(f"기재 금액 {max(amounts):,}원이 기준 {min_royalty:,}원보다 적습니다.")
+            if days and min(days) > deadline:
+                problems.append(f"납부 기한 {min(days)}일이 기준 {deadline}일보다 깁니다.")
+            if problems:
+                checklist.append(_item(name, "FAIL", " ".join(problems), hits[0]))
             elif not amounts or not days:
                 checklist.append(_item(name, "REVIEW", "금액 또는 납부 기한을 숫자로 찾지 못했습니다.", hits[0]))
             else:
@@ -275,6 +278,21 @@ def review_licensing_contract(
     else:
         missing = [n for n, v in (("계약 기간", has_term), ("실시 범위(지역·분야)", has_scope)) if not v]
         checklist.append(_item(name, "WARNING", f"{', '.join(missing)} 조항을 찾지 못했습니다."))
+
+    if pm.is_national:
+        max_years = pm.section("disposal_procedure")["max_contract_years"]
+        name = f"계약기간 {max_years}년 이내 ({art['contract_term']})"
+        years = [int(y) for s in has_term for y in re.findall(r"(\d+)\s*년", s)]
+        if not years:
+            checklist.append(_item(name, "REVIEW", "계약기간을 연 단위 숫자로 찾지 못했습니다.", has_term[0] if has_term else None))
+        elif max(years) > max_years:
+            checklist.append(_item(
+                name, "REVIEW",
+                f"계약기간 {max(years)}년은 {max_years}년을 넘습니다. 준비기간 1년 이상 또는 존속기간 4년 내 만료 사유가 있을 때만 연장할 수 있습니다.",
+                has_term[0],
+            ))
+        else:
+            checklist.append(_item(name, "PASS", f"계약기간 {max(years)}년.", has_term[0]))
 
     if is_exclusive:
         name = f"전용실시권 등록 ({art['exclusive_license_registration']})"

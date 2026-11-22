@@ -265,7 +265,7 @@ def check_portfolio_annuities(
         )
         nxt = r["schedule"][0] if r["schedule"] else None
         if nxt is None:
-            category = "납부 완료"
+            category = "존속기간 만료" if date.fromisoformat(r["expiry_date"]) < today else "납부 완료"
         elif r["status"].startswith("정상"):
             days = (date.fromisoformat(nxt["due_date_if_holiday_shifted"]) - today).days
             category = "임박" if days <= alert_days else "정상"
@@ -284,7 +284,7 @@ def check_portfolio_annuities(
             "expiry_date": r["expiry_date"],
             "status": r["status"],
         })
-    order = {"소멸 추정": 0, "회복 신청 가능": 1, "추가납부기간": 2, "임박": 3, "정상": 4, "납부 완료": 5}
+    order = {"소멸 추정": 0, "회복 신청 가능": 1, "추가납부기간": 2, "임박": 3, "정상": 4, "납부 완료": 5, "존속기간 만료": 6}
     rows.sort(key=lambda x: (order[x["category"]], x["due_date"] or "9999"))
     counts: Dict[str, int] = {}
     for row in rows:

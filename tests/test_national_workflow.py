@@ -203,3 +203,58 @@ def test_zero_payout_tax_note():
     r = calculate_disposal_compensation(1_000_000, [{"name": "A", "share_rate": 1.0}],
                                         reduction_ground="unauthorized_filing_after_report")
     assert r["payment_table"][0]["tax_note"] == "지급액 없음"
+
+
+# ---------------------------------------------------------------- 2차 답변 품질 점검 (회귀 방지)
+def test_state_agency_free_use_is_approval_not_contract():
+    r = plan_national_disposal("non_exclusive", free_ground=3, handled_by="trustee")
+    assert r["method"].startswith("지식재산처장 승인")
+    assert not any("수의계약신청서" in d for d in r["documents_from_applicant"])
+    assert any("수탁기관 계약 절차가 아닙니다" in w for w in r["warnings"])
+
+
+def test_free_trustee_notice_has_no_payment_items():
+    r = plan_national_disposal("non_exclusive", free_ground=1, handled_by="trustee")
+    notice = next(s for s in r["procedure_steps"] if s.startswith("처분결과 통지"))
+    assert "처분보상금의 지급" not in notice and "대금 수납·처분보상금 사항 없음" in notice
+
+
+def test_contract_review_reports_term_and_deadline():
+    from patent_law_mcp.tools.contract_practice import review_licensing_contract
+
+    r = review_licensing_contract("계약기간은 5년으로 한다. 최소실시료로 금 2,000,000원을 계약일부터 90일 이내 납부한다.")
+    items = {c["item"].split(" (")[0]: c for c in r["checklist"]}
+    fee = next(c for c in r["checklist"] if c["item"].startswith("전용실시 최소실시료"))
+    assert "2,000,000원" in fee["comment"] and "90일" in fee["comment"]
+    term = next(c for c in r["checklist"] if c["item"].startswith("계약기간 3년 이내"))
+    assert term["status"] == "REVIEW" and "5년" in term["comment"]
+
+
+def test_expired_patent_category_and_disclosure_deadline():
+    r = check_portfolio_annuities(
+        [{"patent_id": "old", "registration_date": date(2006, 1, 10), "application_date": date(2005, 3, 1), "paid_through_year": 20}],
+        as_of=date(2026, 11, 22),
+    )
+    assert r["patents"][0]["category"] == "존속기간 만료"
+    d = process_invention_disclosure("발명", ["A"], profile="national")
+    assert "4개월 이내" in d["succession_rule"] and "영 제6조 제1항" in d["succession_rule"]
+
+
+def test_disposal_comp_flags_regulation_floor():
+    from patent_law_mcp.tools.employee_invention_practice import calculate_disposal_compensation
+
+    r = calculate_disposal_compensation(3_000_000, [{"name": "A", "share_rate": 1.0}], direct_expenses_krw=5_000_000)
+    assert "1,500,000원 이상" in r["regulation_floor_check"]
+    ok = calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}])
+    assert "regulation_floor_check" not in ok
+
+
+def test_free_license_documents_follow_notice_art4():
+    from patent_law_mcp.tools.employee_invention_practice import evaluate_unutilized_free_license
+
+    r = evaluate_unutilized_free_license(3, "large", has_joint_patentee=True)
+    docs = " ".join(r["required_documents"])
+    assert "별지 제1호서식" in docs and "사유서" in docs and "시설규모" in docs and "통상실시 동의서" in docs
+    assert "신청순서" in r["licensee_limit_note"]
+    assert "제3자와의 실시계약도 유상" in r["subsequent_terms"]["after_free_period"]
+    assert "통상실시 동의서" not in " ".join(evaluate_unutilized_free_license(3)["required_documents"])
