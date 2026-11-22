@@ -101,3 +101,13 @@ def test_audit_block_shows_verified_on():
     from patent_law_mcp.tools.national_disposal import plan_national_disposal
 
     assert plan_national_disposal("non_exclusive")["legal_audit_basis"]["source_text_verified_on"]
+
+
+def test_partial_update_keeps_global_date_at_oldest(setup, monkeypatch):
+    # 리뷰 7: --only로 일부만 갱신해도 전체 대조일은 가장 오래된 법령 기준
+    base = json.loads(setup.read_text(encoding="utf-8"))
+    base["sources"]["other"] = {"name": "다른 법령", "verified_on": "2020-01-01", "articles": {}}
+    setup.write_text(json.dumps(base, ensure_ascii=False), encoding="utf-8")
+    ls.update_baseline(ids=["notice"], fetch=lambda s: ({"seq": "9", "effective_date": ""}, {"제9조": ART9, "제10조": ART10}), path=setup)
+    after = json.loads(setup.read_text(encoding="utf-8"))
+    assert after["verified_on"] == "2020-01-01" and after["sources"]["notice"]["verified_on"] != "2020-01-01"

@@ -258,3 +258,15 @@ def test_free_license_documents_follow_notice_art4():
     assert "신청순서" in r["licensee_limit_note"]
     assert "제3자와의 실시계약도 유상" in r["subsequent_terms"]["after_free_period"]
     assert "통상실시 동의서" not in " ".join(evaluate_unutilized_free_license(3)["required_documents"])
+
+
+def test_review_fixes_sale_basis_and_async_tools():
+    # 리뷰 9: 매각 예정가격 근거는 시행규칙 제11조 제1항 제1호
+    r = calculate_royalty_estimate([10_000], 0.5, [1_000, 1_000], purpose="sale")
+    assert "제11조 제1항 제1호" in r["basis"]
+    # 리뷰 6: 동기 도구는 작업 스레드에서 실행돼 이벤트 루프를 막지 않는다
+    import inspect
+
+    from patent_law_mcp.server import mcp
+
+    assert all(inspect.iscoroutinefunction(t.fn) for t in mcp._tool_manager._tools.values())

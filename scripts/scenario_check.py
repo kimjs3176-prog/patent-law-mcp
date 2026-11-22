@@ -197,8 +197,10 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
 
     # 8. 인증키가 없을 때
     s = "8. 인증키 없음"
-    await step(s, "특허 검색", "search_patents", {"query": "떡"},
-               lambda e, d: ok(not e and d["found"] is False and "KIPRIS_API_KEY" in d["error"], str(d)[:120]))
+    # 키가 없으면 Google Patents로 대신 검색한다. Google이 일시 제한하면 결과를 지어내지 않고 이유와 대안을 돌려줘야 한다
+    await step(s, "특허 검색 (키 없음 → Google)", "search_patents", {"query": "떡"},
+               lambda e, d: ok(not e and ((d["found"] and d["source"].startswith("Google Patents") and d["results"][0]["publication_number"].startswith("KR"))
+                                          or (not d["found"] and "x-api-key" in d.get("how_to", ""))), str(d)[:160]), network=True)
     await step(s, "법령 조문", "get_law_article", {"law_name": "특허법", "article": "제100조"},
                lambda e, d: ok(not e and d["found"] is False and "LAW_OC" in d["error"], str(d)[:120]))
     await step(s, "출원번호 조회 (키 없음)", "fetch_patent_smart", {"patent_identifier": "10-2010-0062402"},

@@ -44,9 +44,14 @@ def _status() -> dict:
         "kipris_api_key": bool(os.environ.get("KIPRIS_API_KEY", "").strip()),
         "law_oc": bool(os.environ.get("LAW_OC", "").strip()),
         "profile": os.environ.get("PATENT_LAW_MCP_PROFILE", "national"),
-        "tool_count": len(mcp._tool_manager._tools),
+        "tool_count": _tool_count(),
         "source_text_verified_on": _baseline_verified_on(),
     }
+
+
+def _tool_count():
+    tools = getattr(getattr(mcp, "_tool_manager", None), "_tools", None)  # FastMCP 내부 구조가 바뀌면 None
+    return len(tools) if isinstance(tools, dict) else None
 
 
 def _wants_html(scope) -> bool:
@@ -57,12 +62,15 @@ def _wants_html(scope) -> bool:
 async def _send_html(send) -> None:
     await send({"type": "http.response.start", "status": 200, "headers": [
         (b"content-type", b"text/html; charset=utf-8"), (b"cache-control", b"public, max-age=300"),
+        (b"vary", b"Accept"),  # '/'는 Accept에 따라 HTML·JSON이 갈리므로 캐시가 둘을 섞지 않게
     ]})
     await send({"type": "http.response.body", "body": INDEX_HTML})
 
 
 async def _send_json(send, status: int, body: dict) -> None:
-    await send({"type": "http.response.start", "status": status, "headers": [(b"content-type", b"application/json; charset=utf-8")]})
+    await send({"type": "http.response.start", "status": status, "headers": [
+        (b"content-type", b"application/json; charset=utf-8"), (b"cache-control", b"no-store"), (b"vary", b"Accept"),
+    ]})
     await send({"type": "http.response.body", "body": json.dumps(body, ensure_ascii=False).encode()})
 
 

@@ -93,7 +93,16 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
         def raise_for_status(self):
             return None
 
+    google = []
+
+    class Blocked(Resp):
+        status_code = 503
+        text = "<html>Sorry</html>"
+
     def fake_get(url, **kw):
+        if "patents.google.com" in url:  # 키가 없으면 Google Patents 검색으로 대신한다
+            google.append(url)
+            return Blocked()
         seen.append((kw.get("params") or {}).get("ServiceKey"))
         return Resp()
 
@@ -102,7 +111,7 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
     call = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search_patents", "arguments": {"query": "떡"}}}
 
     no_key = c.post("/mcp", json=call, headers=HDR).json()["result"]
-    assert "x-api-key" in json.dumps(no_key, ensure_ascii=False) and seen == []
+    assert "x-api-key" in json.dumps(no_key, ensure_ascii=False) and seen == [] and len(google) == 2  # 503이면 한 번 더 시도
 
     c.post("/mcp", json=call, headers={**HDR, "x-api-key": "user-key-123"})
     assert seen == ["user-key-123"]
@@ -110,3 +119,11 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
 
     c.post("/mcp", json=call, headers=HDR)  # 다음 사용자의 요청에는 남지 않음
     assert seen == ["user-key-123"]
+
+
+def test_root_responses_vary_on_accept(monkeypatch):
+    # 리뷰 5: '/'는 Accept에 따라 HTML·JSON이 갈리므로 캐시가 섞지 않도록 Vary: Accept
+    c = _client(monkeypatch, PATENT_LAW_MCP_ALLOW_ANONYMOUS="1")
+    assert c.get("/", headers={"Accept": "text/html"}).headers["vary"] == "Accept"
+    j = c.get("/")
+    assert j.headers["vary"] == "Accept" and j.headers["cache-control"] == "no-store"

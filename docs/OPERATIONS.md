@@ -54,6 +54,7 @@ docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_A
 ```
 
 - 클라이언트는 `https://<host>/mcp`에 `Authorization: Bearer <토큰>` 헤더로 접속합니다.
+- 요청마다 독립적으로 처리합니다(stateless). 사용자가 `x-api-key` 헤더로 보낸 본인 KIPRIS 키는 그 요청에만 씁니다.
 - 토큰 없이 127.0.0.1 이외 주소에 바인딩하면 서버가 시작을 거부합니다.
 
 </details>

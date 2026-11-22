@@ -9,6 +9,10 @@
 도입 기업 제품과의 권리범위 1차 대조를 보조하기 위한 도구입니다.
 """
 
+import functools
+import inspect
+
+import anyio
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
@@ -79,14 +83,36 @@ LOCAL = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=Fa
 NETWORK = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)
 
 
+def _in_thread(fn):
+    """동기 도구를 작업 스레드에서 실행하는 async 래퍼.
+
+    FastMCP는 동기 함수를 이벤트 루프에서 바로 실행하므로, 외부 HTTP 대기나 재시도 sleep이 있는 도구가
+    다른 사용자의 요청까지 멈춘다. 서명(signature)·문서는 functools.wraps로 그대로 유지되고,
+    contextvars(요청별 KIPRIS 키 등)는 anyio가 작업 스레드로 복사한다.
+    """
+    if inspect.iscoroutinefunction(fn):
+        return fn
+
+    @functools.wraps(fn)
+    async def runner(*args, **kwargs):
+        return await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
+
+    return runner
+
+
 def register(fn, name: str, description: str, annotations: ToolAnnotations = LOCAL) -> None:
-    mcp.tool(name=name, description=description, annotations=annotations)(fn)
+    mcp.tool(name=name, description=description, annotations=annotations)(_in_thread(fn))
     # 모르는 인자는 오류로 돌려준다. 기본 동작(조용히 무시)이면 인자 이름을 잘못 쓴 호출이
     # 기본값으로 계산되어, 예컨대 갱신 사유가 있는데도 '갱신 사유 없음'으로 답하게 된다.
-    tool = mcp._tool_manager._tools[name]
-    tool.fn_metadata.arg_model.model_config["extra"] = "forbid"
-    tool.fn_metadata.arg_model.model_rebuild(force=True)
-    tool.parameters["additionalProperties"] = False
+    try:
+        tool = mcp._tool_manager._tools[name]
+        tool.fn_metadata.arg_model.model_config["extra"] = "forbid"
+        tool.fn_metadata.arg_model.model_rebuild(force=True)
+        tool.parameters["additionalProperties"] = False
+    except (AttributeError, KeyError, TypeError) as e:  # MCP SDK 내부 구조가 바뀌어도 서버는 뜨게 한다
+        import logging
+
+        logging.getLogger(__name__).warning("모르는 인자 거부를 적용하지 못했습니다 (%s: %s) — MCP SDK 버전을 확인하십시오", name, e)
 
 
 # 1. 국가직무발명특허권 업무 (지식재산처 규정·시행규칙·고시 기준, 핵심)
@@ -195,7 +221,8 @@ register(
 register(
     search_patents,
     "search_patents",
-    "KIPRIS Plus 공식 API로 한국 특허 검색 (키워드 또는 출원인+명칭, KIPRIS_API_KEY 필요). 결과는 가공·재정렬하지 않음",
+    "한국 특허 검색 (키워드 또는 출원인+명칭). KIPRIS Plus 인증키(사용자 요청 헤더 x-api-key 또는 서버 KIPRIS_API_KEY)가 있으면 공식 API, "
+    "없으면 Google Patents 공개 검색(비공식, 권리 상태 없음). 결과는 가공·재정렬하지 않으며 source로 출처를 밝힘",
     NETWORK,
 )
 register(

@@ -118,7 +118,11 @@ def calculate_royalty_estimate(
             "total_sales_quantity": total_qty,
             "estimated_price_krw": total,
             "formula": f"총판매예정수량 {total_qty:,}개 × {round(unit_price):,}원 × {share_rate:g} × {rate:.2%} = {total:,}원",
-            "basis": f"{art['royalty_estimation']} 제2항·제3항 (예정가격은 실시기간의 총액, 같은 조 제5항 본문)",
+            "basis": (
+                f"{art['sale_price_basis']} 제1호 — 존속기간 실시료 추정총액 (제2항·제3항 산식으로 추정)"
+                if purpose == "sale"
+                else f"{art['royalty_estimation']} 제2항·제3항 (예정가격은 실시기간의 총액, 같은 조 제5항 본문)"
+            ),
             "years_covered": len(annual_sales_quantities),
         })
     else:
