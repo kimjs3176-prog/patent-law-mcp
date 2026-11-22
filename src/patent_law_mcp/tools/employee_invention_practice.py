@@ -345,7 +345,7 @@ def evaluate_unutilized_free_license(
     cautions = []
     if has_joint_patentee and rules["joint_patentee_written_consent_required"]:
         cautions.append(
-            f"민간 공동권리자가 있으므로 공동권리자의 통상실시 서면 동의서가 필요합니다 ({art['joint_patentee_consent']}). "
+            f"공동권리자가 있으므로 무상실시 신청서에 공동권리자의 통상실시 동의서를 첨부해야 합니다 ({art['joint_patentee_consent']}). "
             "민간 지분의 실시료는 별도 협의하십시오."
         )
 
@@ -357,7 +357,10 @@ def evaluate_unutilized_free_license(
         "ownership_check": "민간 공동권리자 있음" if has_joint_patentee else "국가 단독 소유 (신청 시 등록원부로 확인)",
         "cautions": cautions,
         "subsequent_terms": {
-            "after_free_period": f"무상 기간 종료 후 계속 실시하려면 유상 전환 ({art['free_license_paid_conversion']})",
+            "after_free_period": (
+                f"최초 무상실시 기간 종료 후 실시계약을 연장하려면 유상으로 해야 하고, 그 뒤 제3자와의 실시계약도 유상 통상실시로 함 "
+                f"({art['free_license_paid_conversion']}·제2항)"
+            ),
             "sme_preferential_rate": (
                 f"중소기업이 무상실시 종료 후 재실시를 요청하면 실시료 산정 시 기본율을 {rules['sme_renewal_base_rate'] * 100:g}%로 "
                 f"낮추어 적용할 수 있음 ({art['sme_renewal_rate']})"
@@ -366,11 +369,15 @@ def evaluate_unutilized_free_license(
             ),
         },
         "required_documents": [
-            "국유특허 무상실시 신청서 (고시 별지 서식)",
-            "사업화 추진 일정과 자금 조달 계획을 담은 사업계획서",
-            "공동권리자가 있으면 통상실시 서면 동의서",
+            "무상실시 신청서 (고시 별지 제1호서식) — 지식재산처장에게 제출",
+            "사업계획서 — ① 사업화 추진일정 ② 사업화 자금 수요 예측 및 조달 계획 ③ 해당 기술분야 사업경험 및 기술축적 정도(시설규모 포함)",
+            "무상실시를 하고자 하는 사유서",
+            *(["공동권리자의 통상실시 동의서"] if has_joint_patentee else []),
         ],
-        "licensee_limit_note": f"신청자가 많으면 사업계획의 실현 가능성 등으로 실시자 수를 제한할 수 있음 ({art['licensee_limit']})",
+        "documents_basis": "고시 제4조",
+        "licensee_limit_note": (
+            f"신청자가 다수이면 과당경쟁 방지를 위해 실시자 수를 제한할 수 있고, 기준은 ① 사업계획서의 실현가능성 ② 신청순서 ({art['licensee_limit']})"
+        ),
         "legal_audit_basis": pm.audit_block("무상실시"),
     }
 

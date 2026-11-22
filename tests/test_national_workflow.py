@@ -247,3 +247,14 @@ def test_disposal_comp_flags_regulation_floor():
     assert "1,500,000원 이상" in r["regulation_floor_check"]
     ok = calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}])
     assert "regulation_floor_check" not in ok
+
+
+def test_free_license_documents_follow_notice_art4():
+    from patent_law_mcp.tools.employee_invention_practice import evaluate_unutilized_free_license
+
+    r = evaluate_unutilized_free_license(3, "large", has_joint_patentee=True)
+    docs = " ".join(r["required_documents"])
+    assert "별지 제1호서식" in docs and "사유서" in docs and "시설규모" in docs and "통상실시 동의서" in docs
+    assert "신청순서" in r["licensee_limit_note"]
+    assert "제3자와의 실시계약도 유상" in r["subsequent_terms"]["after_free_period"]
+    assert "통상실시 동의서" not in " ".join(evaluate_unutilized_free_license(3)["required_documents"])
