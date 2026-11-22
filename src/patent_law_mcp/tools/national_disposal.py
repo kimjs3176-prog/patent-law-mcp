@@ -82,7 +82,7 @@ def calculate_royalty_estimate(
     if base_rate is None:
         rate = sme_rate if sme_relicense_after_free_license else rule["base_rate"]
         rate_note = (
-            f"고시 제7조 중소기업 재실시 기본율 {sme_rate:.0%} ({art['sme_renewal_rate']})"
+            f"중소기업 재실시 기본율 {sme_rate:.0%} — 무상실시 종료 후 중소기업이 재실시를 요청한 경우 낮추어 적용할 수 있음 ({art['sme_renewal_rate']})"
             if sme_relicense_after_free_license
             else f"기본율 {rule['base_rate']:.0%} ({art['royalty_estimation']} 제3항 제4호)"
         )
@@ -204,7 +204,7 @@ def calculate_registration_compensation(
     base = {
         "right_type": _RIGHT_LABEL[right_type],
         "regulatory_basis": f"{art['registration_compensation']} 제1항 (각 권리마다 {per_right:,}원 범위에서 예산 등을 고려해 고시로 정함)",
-        "legal_audit_basis": pm.audit_block("감액"),
+        "legal_audit_basis": pm.audit_block("감액") if reduction_ground != "none" else pm.audit_block("등록보상금 쟁점"),
     }
     if already_paid_for_same_invention:
         return {**base, "payable": False, "total_compensation_krw": 0,
@@ -274,6 +274,33 @@ def plan_national_disposal(
     steps: List[str] = []
     documents: List[str] = []
 
+    if free_ground == 3:
+        if handled_by == "trustee":
+            warnings.append("국가기관 직접 실시(제3호)는 지식재산처장의 승인 사항입니다. 수탁기관 계약 절차가 아닙니다.")
+        ground_text = proc["free_disposal_grounds"][2]
+        return {
+            "disposal": f"{label} — 국가기관 직접 실시 승인",
+            "handled_by": "지식재산처",
+            "consideration": f"무상 — {ground_text} ({art['free_disposal_grounds']})",
+            "method": f"지식재산처장 승인 ({art['free_use_by_state_agency']}) — 수의계약·경쟁입찰 절차 아님",
+            "contract_term": None,
+            "bid_notice": None,
+            "procedure_steps": [
+                f"국가기관의 장(발명기관의 장 포함)이 무상실시 승인신청서를 지식재산처장에게 제출 ({art['free_use_by_state_agency']})",
+                f"무상실시 기간·조건에 관해 발명기관의 장 및 관계기관의 장 의견 청취 ({art['opinion_hearing']})",
+                "승인 후 공공의 목적 범위에서 직접 실시. 무상이므로 처분보상금(영 제17조)은 없음",
+            ],
+            "documents_from_applicant": [
+                "무상실시 승인신청서 (시행규칙 별지 제3호서식)",
+                "해당 국가직무발명특허권등의 실시에 관한 사업계획서",
+                "무상실시를 하려는 사유서",
+            ],
+            "identity_checks": None,
+            "private_contract_exceptions": [],
+            "warnings": warnings,
+            "legal_audit_basis": pm.audit_block("처분 방식"),
+        }
+
     if handled_by == "trustee" and disposal_type == "sale":
         raise ValueError(f"수탁기관의 위탁업무는 전용실시권 설정·통상실시권 허락과 홍보 등 관리입니다 ({art['trustee_scope']}). 매각은 지식재산처가 직접 처분합니다.")
 
@@ -281,14 +308,7 @@ def plan_national_disposal(
     if free_ground is not None:
         ground_text = proc["free_disposal_grounds"][free_ground - 1]
         consideration = f"무상 — {ground_text} ({art['free_disposal_grounds']})"
-        if free_ground == 3:
-            documents += [
-                "무상실시 승인신청서 (시행규칙 별지 제3호서식)",
-                "해당 국가직무발명특허권등의 실시에 관한 사업계획서",
-                "무상실시를 하려는 사유서",
-            ]
-            steps.append(f"국가기관의 장이 지식재산처장에게 무상실시 승인 신청 ({art['free_use_by_state_agency']})")
-        elif free_ground in (1, 2):
+        if free_ground in (1, 2):
             documents.append("무상실시를 하려는 사유서 (수의계약신청서에 첨부)")
         else:
             warnings.append("제4호(국가시책 추진)는 지식재산처장이 필요하다고 인정해야 합니다. 인정 근거 문서를 확보하십시오.")
@@ -333,7 +353,11 @@ def plan_national_disposal(
     steps.append(f"계약서 작성 — 필수 기재: {', '.join(proc['contract_required_items'])} ({art['contract_items']} 제2항)")
     if handled_by == "trustee":
         steps.append(f"수탁기관은 기재사항을 갖춘 계약서와 신청서류로 지식재산처장 승인을 받고, 체결 후 완료문서 송부 ({art['trustee_contract_approval']} 제2항)")
-        steps.append(f"처분결과 통지 — 계약서 사본 + {', '.join(proc['result_notice_items'])} ({art['disposal_result_notice']})")
+        notice_items = [i for i in proc["result_notice_items"] if not (free_ground is not None and ("대금" in i or "처분보상금" in i))]
+        steps.append(
+            f"처분결과 통지 — 계약서 사본 + {', '.join(notice_items)} ({art['disposal_result_notice']})"
+            + (" — 무상이라 대금 수납·처분보상금 사항 없음" if free_ground is not None else "")
+        )
     else:
         steps.append(
             "처분 내용을 발명기관의 장에게 통지 → 발명기관의 장이 발명자에게 통지 (영 제14조 제1항·제2항). 무상 처분이라 처분보상금(영 제17조)은 없음"

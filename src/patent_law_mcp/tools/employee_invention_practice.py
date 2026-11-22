@@ -51,7 +51,6 @@ def process_invention_disclosure(
             "action_required": "직무 범위 밖 발명이면 승계 대상이 아닙니다. 판단 근거를 기록하고 발명자에게 통지하십시오.",
         }
 
-    authority = pm.metadata.get("competent_authority", "지식재산처")
     art = pm.articles
     novelty = (
         "출원 전 공개 이력이 있어 공지예외 주장(특허법 제30조, 공개일부터 12개월 이내 출원) 필요 여부를 검토하십시오."
@@ -102,6 +101,10 @@ def process_invention_disclosure(
         ],
         "documents_basis": art["invention_report_documents"],
         "succession_considerations": f"국가승계 결정 시 현재 또는 장래의 실용적 가치 및 산업상 이용가능성 등을 고려 ({art['succession_considerations']})",
+        "succession_rule": (
+            "발명기관의 장이 직무발명 해당 여부와 국가승계 여부를 결정하고, 승계하지 않기로 하면 신고를 받은 날부터 4개월 이내에 "
+            "발명자에게 서면 통지 (영 제6조 제1항). 승계하면 지체 없이 국가 명의로 출원하고 외국 출원 여부를 결정 (영 제7조 제1항)"
+        ),
         "applicant_name_rule": (
             f"국가 명의 출원 시 부기하는 발명기관의 장 명칭: 중앙행정기관은 그 기관장 명칭, 합의제 행정기관은 그 기관 명칭, "
             f"하위기관은 1차 소속기관에 한정해 그 기관장 명칭 ({art['applicant_name_annotation']})"
@@ -109,9 +112,10 @@ def process_invention_disclosure(
         "administrative_steps": [
             "1. 직무발명신고서·성질 설명서·요약서를 발명기관의 장에게 제출 (시행규칙 제2조 제1항)",
             "2. 직무발명심의위원회 안건 상정 (직무 해당 여부·국가 승계 여부 의결)",
-            f"3. {authority} 국유특허 출원 절차에 따라 국가 명의로 출원 (발명기관의 장 명칭 부기, {art['applicant_name_annotation']})",
-            f"4. 등록결정 후 국가직무발명특허권등 등록요청서(별지 제2호서식)에 의견서·결정서 사본·보상금 서류 첨부해 요청 ({art['registration_request']})",
-            f"5. 등록보상금 지급 (특허 {reg['patent']:,}원·실용신안 {reg['utility_model']:,}원·디자인 {reg['design']:,}원 범위, "
+            "3. 승계하지 않으면 신고일부터 4개월 이내 발명자에게 서면 통지 (영 제6조 제1항)",
+            f"4. 승계하면 발명기관의 장이 지체 없이 국가 명의로 출원 — 발명기관의 장 명칭 부기 ({art['applicant_name_annotation']}), 외국 출원 여부 결정 (영 제7조 제1항)",
+            f"5. 등록결정 후 국가직무발명특허권등 등록요청서(별지 제2호서식)에 의견서·결정서 사본·보상금 서류 첨부해 요청 ({art['registration_request']})",
+            f"6. 등록보상금 지급 (특허 {reg['patent']:,}원·실용신안 {reg['utility_model']:,}원·디자인 {reg['design']:,}원 범위, "
             f"동일 발명 1회, {art['registration_compensation']}) — calculate_registration_compensation으로 발명자별 배분",
         ],
         "legal_audit_basis": pm.audit_block("등록보상금"),
@@ -279,6 +283,14 @@ def calculate_disposal_compensation(
         "payout_ratio_source": "호출 시 입력" if payout_ratio is not None else "정책 YAML",
         "total_compensation_krw": pool,
         **({"reduction": reduction} if reduction else {}),
+        **(
+            {"regulation_floor_check": (
+                f"규정 제17조 제1항 문언(처분수입금의 100분의 50 이상)으로 보면 {int(contract_income_krw * 0.5):,}원 이상인데, "
+                f"고시 산식(직접비용 공제 후 50%) 결과는 {pool:,}원입니다. 적용 기준을 지식재산처에 확인하십시오."
+            )}
+            if pm.is_national and deduct and reduction is None and pool < int(contract_income_krw * 0.5)
+            else {}
+        ),
         "payment_table": table,
         "tax_basis": f"{art['tax_free_limit']} — 직무발명보상금 비과세 한도 연 {limit:,}원 (재직·퇴직 수령분 합산)",
         "administrative_checklist": [
@@ -350,7 +362,7 @@ def evaluate_unutilized_free_license(
                 f"중소기업이 무상실시 종료 후 재실시를 요청하면 실시료 산정 시 기본율을 {rules['sme_renewal_base_rate'] * 100:g}%로 "
                 f"낮추어 적용할 수 있음 ({art['sme_renewal_rate']})"
                 if applicant_scale == "sme"
-                else "일반 유상 요율 적용"
+                else f"유상 전환 시 실시료는 시행규칙 제11조 산식(기본율 {pm.section('royalty_estimation')['base_rate'] * 100:g}%, 2~4%)으로 산정 — calculate_royalty_estimate"
             ),
         },
         "required_documents": [
