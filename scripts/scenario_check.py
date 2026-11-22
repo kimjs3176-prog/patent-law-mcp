@@ -100,7 +100,7 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     # 0. 서버 기본
     tools = await session.list_tools()
     names = {t.name for t in tools.tools}
-    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 32 else "FAIL", f"{len(names)}개"))
+    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 33 else "FAIL", f"{len(names)}개"))
 
     # 1. 기술이전 상담 (국유특허·실데이터)
     s = "1. 기술이전 상담"
@@ -255,6 +255,10 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
                    {"patent_id": "B", "registration_date": "2024-06-01", "application_date": "2022-01-01"}]},
                lambda e, d: ok(not e and d["patents"][0]["patent_id"] == "A" and d["patents"][0]["category"] == "추가납부기간", str(d)[:160]))
 
+    await step(s, "근거 법령 개정 여부 (실데이터)", "check_legal_source_updates", {"refresh": True},
+               lambda e, d: ok(not e and not d["errors"] and d["baseline_verified_on"] and d["summary"] in ("변경 없음", "변경 있음 — 원문 검토 필요"),
+                               str(d)[:200]), network=True)
+
     # 12. 근거 부족·불완전 입력에서 답변이 과도하게 단정되지 않는지 확인
     s = "12. 답변 품질"
     for outlook in (None, "향후 현장 검증을 추진할 예정이다."):
@@ -320,7 +324,7 @@ async def http_session() -> List[Result]:
                 await session.initialize()
                 n = len((await session.list_tools()).tools)
                 _, data = await call(session, "calculate_patent_term", {"application_date": "2010-06-30"})
-                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 32 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
+                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 33 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
         r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                        headers={"accept": "application/json, text/event-stream"}, trust_env=False)
         results.append(("13. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))

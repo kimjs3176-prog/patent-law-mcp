@@ -10,6 +10,7 @@
 필수 키가 없거나 형식이 틀리면 PolicyError를 냅니다 (코드 안에 별도 기본값 없음).
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -17,6 +18,7 @@ from typing import Any, Dict, List, Literal, Optional
 import yaml
 
 POLICY_DIR = Path(__file__).parent
+LEGAL_BASELINE_FILE = POLICY_DIR / "legal_baseline.json"
 DEFAULT_POLICY_FILE = POLICY_DIR / "kipo_notice_rules.yaml"
 PROFILE_FILES = {
     "national": DEFAULT_POLICY_FILE,
@@ -227,12 +229,21 @@ class PolicyManager:
             "notice": self.audit_trail_basis,
             "parent_regulation": self.metadata["parent_regulation"],
             "policy_file": self.path.name,
+            "source_text_verified_on": _baseline_verified_on(),
             "unverified_items": notes,
         }
 
     def require_national(self, feature: str) -> None:
         if not self.is_national:
             raise ValueError(f"{feature}은(는) 국유특허(national) 프로파일 전용 기능입니다 (현재 프로파일: {self.profile}).")
+
+
+def _baseline_verified_on() -> Optional[str]:
+    """국가법령정보 원문 기준선 대조일 (scripts/check_law_sources.py --update가 기록)."""
+    try:
+        return json.loads(LEGAL_BASELINE_FILE.read_text(encoding="utf-8")).get("verified_on")
+    except (OSError, ValueError):
+        return None
 
 
 policy_manager = PolicyManager()

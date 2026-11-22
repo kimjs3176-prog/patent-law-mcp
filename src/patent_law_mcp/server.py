@@ -12,6 +12,7 @@
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from patent_law_mcp.legal_sources import check_legal_source_updates
 from patent_law_mcp.policies.policy_manager import get_policy_table
 from patent_law_mcp.tools.analysis import (
     evaluate_commercialization,
@@ -59,7 +60,8 @@ mcp = FastMCP(
         "계약, 처분보상금, 수탁기관 보고·정산, 심판·소송 절차를 다룹니다. 대학·출연연(public_research)·민간 기업(private_company) "
         "프로파일은 profile 인자나 PATENT_LAW_MCP_PROFILE로 보조 지원합니다. "
         "도구가 found=False·warnings·'미확인'을 반환하면 그 사실을 그대로 전달하고, 특허번호·출원인·수치를 추측해 채우지 마십시오. "
-        "법령·고시 기준값은 policies/kipo_notice_rules.yaml에 있으며, verification_notes에 원문 확인이 필요한 항목이 표시됩니다."
+        "법령·고시 기준값은 policies/kipo_notice_rules.yaml에 있으며, verification_notes에 원문 확인이 필요한 항목이 표시됩니다. "
+        "결과의 legal_audit_basis.source_text_verified_on은 원문 대조일이며, 그 이후 개정 여부는 check_legal_source_updates로 확인합니다."
     ),
 )
 
@@ -130,6 +132,13 @@ register(
     guide_national_dispute,
     "guide_national_dispute",
     "[국유특허] 심판 청구·특허법원 소송 시 지식재산처·발명기관 대응 절차와 대리인 선임 (고시 제21조~제24조)",
+)
+register(
+    check_legal_source_updates,
+    "check_legal_source_updates",
+    "기준값의 근거 법령·고시(규정·시행규칙·고시·특허법 등)가 마지막 원문 대조 이후 개정됐는지 국가법령정보센터 현재 원문으로 확인 "
+    "(버전 변경, 감시 조문 본문 변경·삭제, '300만원'·'3퍼센트' 같은 기준값 문구 누락). 인증키 불필요, 24시간 캐시",
+    NETWORK,
 )
 register(
     get_policy_table,

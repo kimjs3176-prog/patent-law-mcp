@@ -16,3 +16,8 @@ USER_AGENT = "Mozilla/5.0 (compatible; patent-law-mcp/0.3; +https://github.com/k
 def http_get(url: str, **kwargs: Any) -> httpx.Response:
     headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
     return httpx.get(url, headers=headers, **kwargs)
+
+
+def http_post(url: str, **kwargs: Any) -> httpx.Response:
+    headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
+    return httpx.post(url, headers=headers, **kwargs)

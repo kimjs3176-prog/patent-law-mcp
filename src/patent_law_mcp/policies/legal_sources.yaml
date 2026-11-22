@@ -1,0 +1,156 @@
+# 국가법령정보센터 원문 감시 목록
+#
+# 정책 YAML(kipo_notice_rules.yaml 등)의 기준값이 기대는 법령 조문입니다.
+# scripts/check_law_sources.py가 주 1회(GitHub Actions) 현재 시행 원문을 받아
+#   1) 버전(공포·시행) 변경,
+#   2) 아래 조문 본문의 변경(기준선 legal_baseline.json과 비교),
+#   3) phrases 문구가 원문에서 사라졌는지
+# 를 확인하고, 바뀐 것이 있으면 law-drift 이슈를 엽니다.
+#
+# phrases.policy: 그 문구에 기대는 정책 YAML 키 — 문구가 사라지면 이 값부터 다시 확인하십시오.
+
+sources:
+  - id: regulation
+    kind: law
+    name: "국가공무원 등 직무발명의 처분ㆍ관리 및 보상 등에 관한 규정"
+    short: "영"
+    articles:
+      제2조: []
+      제5조: []
+      제6조:
+        - {phrase: "4개월 이내", policy: "(도구) 국가승계 불승계 통지 기한"}
+      제7조:
+        - {phrase: "국가 명의", policy: "(도구) 국가 명의 출원"}
+      제8조: []
+      제10조:
+        - {phrase: "무상으로 할 수 있다", policy: "disposal_procedure.free_disposal_grounds"}
+      제11조:
+        - {phrase: "수의계약", policy: "articles.non_exclusive_private_contract"}
+        - {phrase: "경쟁입찰", policy: "exclusive_licensing.competitive_bidding_required"}
+      제12조: []
+      제14조: []
+      제16조:
+        - {phrase: "50만원", policy: "registration_compensation.patent"}
+        - {phrase: "30만원", policy: "registration_compensation.utility_model"}
+        - {phrase: "20만원", policy: "registration_compensation.design"}
+        - {phrase: "한 번만", policy: "(도구) 등록보상금 1회 지급"}
+      제17조:
+        - {phrase: "100분의 50 이상", policy: "verification_notes (처분보상금 비율 쟁점)"}
+      제18조:
+        - {phrase: "100분의 15", policy: "trustee_obligations.contribution_compensation_max_ratio"}
+      제21조: []
+
+  - id: enforcement_rule
+    kind: law
+    name: "국가공무원 등 직무발명의 처분ㆍ관리 및 보상 등에 관한 규정 시행규칙"
+    short: "시행규칙"
+    articles:
+      제2조: []
+      제3조: []
+      제4조: []
+      제5조: []
+      제6조:
+        - {phrase: "3년 이내", policy: "disposal_procedure.max_contract_years"}
+        - {phrase: "1년 이상", policy: "disposal_procedure.preparation_extension_min_years"}
+        - {phrase: "4년 이내", policy: "disposal_procedure.near_expiry_years"}
+      제7조:
+        - {phrase: "30일 전", policy: "disposal_procedure.bid_notice_days"}
+      제8조: []
+      제9조: []
+      제10조: []
+      제11조:
+        - {phrase: "3퍼센트", policy: "royalty_estimation.base_rate"}
+        - {phrase: "2퍼센트 이상 4퍼센트 이하", policy: "royalty_estimation.base_rate_min / base_rate_max"}
+      제12조: []
+      제13조:
+        - {phrase: "분기별", policy: "(도구) 수탁기관 대장 분기 통지"}
+
+  - id: notice
+    kind: admrul
+    name: "국가공무원 등 직무발명의 처분ㆍ관리 및 보상 등에 관한 업무 운영요령"
+    short: "고시"
+    articles:
+      제3조:
+        - {phrase: "3년 동안", policy: "unutilized_free_license.unutilized_years_threshold"}
+        - {phrase: "최대 3년", policy: "unutilized_free_license.max_free_license_years"}
+      제4조:
+        - {phrase: "동의서", policy: "unutilized_free_license.joint_patentee_written_consent_required"}
+      제5조: []
+      제6조: []
+      제7조:
+        - {phrase: "2%", policy: "unutilized_free_license.sme_renewal_base_rate"}
+      제9조:
+        - {phrase: "300만원", policy: "exclusive_licensing.minimum_royalty_amount"}
+        - {phrase: "60일", policy: "exclusive_licensing.payment_deadline_days"}
+      제10조:
+        - {phrase: "30일 전", policy: "exclusive_renewal.application_deadline_days_before_expiry"}
+      제11조:
+        - {phrase: "100분의 50", policy: "disposal_compensation.payout_ratio"}
+        - {phrase: "직접비용", policy: "disposal_compensation.deduct_direct_expenses"}
+      제15조:
+        - {phrase: "30일 이내", policy: "trustee_obligations.change_notice_days"}
+      제16조: []
+      제17조: []
+      제18조:
+        - {phrase: "15일까지", policy: "trustee_obligations.quarterly_report_day"}
+      제19조: []
+      제21조: []
+      제22조: []
+      제23조: []
+      제24조: []
+      제26조: []
+
+  - id: patent_act
+    kind: law
+    name: "특허법"
+    short: "특허법"
+    articles:
+      제14조: []
+      제30조:
+        - {phrase: "12개월", policy: "patent_deadlines.yaml (공지예외)"}
+      제79조: []
+      제81조:
+        - {phrase: "6개월", policy: "patent_deadlines.yaml annuity.late_payment_months"}
+      제81조의3:
+        - {phrase: "3개월", policy: "patent_deadlines.yaml annuity.restoration_months"}
+      제88조:
+        - {phrase: "20년", policy: "patent_deadlines.yaml (특허 존속기간)"}
+      제101조: []
+      제186조:
+        - {phrase: "30일 이내", policy: "(도구) 심결 취소소송 제기 기간"}
+      제201조: []
+
+  - id: utility_model_act
+    kind: law
+    name: "실용신안법"
+    short: "실용신안법"
+    articles:
+      제22조:
+        - {phrase: "10년", policy: "patent_deadlines.yaml (실용신안 존속기간)"}
+
+  - id: invention_promotion_act
+    kind: law
+    name: "발명진흥법"
+    short: "발명진흥법"
+    articles:
+      제10조의2: []
+      제12조: []
+      제13조:
+        - {phrase: "대통령령으로 정하는 기간", policy: "invention_procedure.succession_notice_months (기간은 시행령 제7조)"}
+      제15조: []
+
+  - id: invention_promotion_decree
+    kind: law
+    name: "발명진흥법 시행령"
+    short: "발명진흥법 시행령"
+    articles:
+      제7조:
+        - {phrase: "4개월 이내", policy: "invention_procedure.succession_notice_months"}
+
+  - id: income_tax_decree
+    kind: law
+    name: "소득세법 시행령"
+    short: "소득세법 시행령"
+    articles:
+      제17조의3:
+        - {phrase: "700만원", policy: "income_tax.tax_free_limit_annual"}

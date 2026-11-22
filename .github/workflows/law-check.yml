@@ -1,0 +1,46 @@
+name: Law source check
+
+# 정책 기준값의 근거 법령·고시를 국가법령정보센터 현재 원문과 주 1회 대조합니다.
+# 바뀐 것이 있으면 law-drift 이슈를 열거나 갱신하고, 점검 자체가 실패하면 작업을 실패로 표시합니다.
+on:
+  schedule:
+    - cron: "43 20 * * 0"   # 매주 월요일 05:43 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked
+      - id: check
+        env:
+          PATENT_LAW_MCP_CACHE: "off"
+        run: |
+          set +e
+          uv run python scripts/check_law_sources.py --check --report law_drift.md > /dev/null
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: Open or update law-drift issue
+        if: steps.check.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create law-drift --color D93F0B --description "근거 법령·고시 원문 변경 검토 필요" --force
+          num=$(gh issue list --label law-drift --state open --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue edit "$num" --body-file law_drift.md
+          else
+            gh issue create --title "근거 법령·고시 원문 변경 검토 필요" --label law-drift --body-file law_drift.md
+          fi
+      - name: Show report on script error
+        if: steps.check.outputs.code == '2'
+        run: |
+          cat law_drift.md
+          exit 1
