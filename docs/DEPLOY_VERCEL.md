@@ -25,24 +25,30 @@
 
 | 이름 | 필요 여부 | 값 | 설명 |
 |:---|:---|:---|:---|
-| `PATENT_LAW_MCP_TOKEN` | **권장** | 긴 임의 문자열 (아래 명령으로 생성) | 설정하면 `/mcp` 요청에 `Authorization: Bearer <토큰>`을 요구합니다. 커넥터 등록 때 사용자에게 알려 줄 값입니다 |
-| `PATENT_LAW_MCP_ALLOW_ANONYMOUS` | 토큰을 안 쓸 때만 | `1` | 토큰 없이 공개합니다. 주소를 아는 누구나 쓸 수 있습니다 (도구는 모두 읽기 전용) |
+| `PATENT_LAW_MCP_ALLOW_ANONYMOUS` | **필수 (공개 운영)** | `1` | 누구나 로그인·토큰 없이 쓸 수 있게 공개합니다. 도구는 모두 읽기 전용이라 서버 데이터를 바꿀 수 없습니다 |
+| `PATENT_LAW_MCP_TOKEN` | 넣지 않음 | — | 넣으면 공개 대신 토큰 방식이 됩니다 (아래 "토큰 방식으로 바꾸려면") |
 | `KIPRIS_API_KEY` | 선택 | KIPRIS Plus 인증키 | 특허 검색·출원번호 조회. 없으면 등록·공개번호 조회는 Google Patents로 동작 |
 | `LAW_OC` | 선택 | 국가법령정보 공동활용 OC | 법령 검색·조문 조회 (`search_laws`, `get_law_article`). Open API 신청 때 호출 서버의 IP·도메인을 등록해야 하며, Vercel은 나가는 IP가 고정되지 않아 동작하지 않을 수 있습니다. 원문 개정 점검(`check_legal_source_updates`)은 이 값 없이 동작합니다 |
 | `PATENT_LAW_MCP_PROFILE` | 선택 | `national` (기본) | `public_research`(대학·출연연), `private_company`(민간 기업) |
 | `PATENT_LAW_MCP_CACHE` | 설정 불필요 | — | Vercel에서는 자동으로 `/tmp/patent-law-mcp/cache.sqlite3`를 씁니다 (`off`로 끌 수 있음) |
 
-`PATENT_LAW_MCP_TOKEN`과 `PATENT_LAW_MCP_ALLOW_ANONYMOUS`를 둘 다 넣지 않으면 서버는 공개로 넘어가지 않고 `/mcp` 요청을 503(설정 필요)으로 거부합니다.
+`PATENT_LAW_MCP_ALLOW_ANONYMOUS`도 `PATENT_LAW_MCP_TOKEN`도 넣지 않으면 서버는 공개로 넘어가지 않고 `/mcp` 요청을 503(설정 필요)으로 거부합니다. 공개는 이 값으로 명시적으로 켜야 합니다.
 
-토큰은 아래 명령 중 하나로 만들면 됩니다 (macOS·Linux 터미널, 또는 Python이 있는 Windows).
+> [!WARNING]
+> **공개 운영에서는 `KIPRIS_API_KEY`의 호출 한도를 모든 사용자가 함께 씁니다.** KIPRIS Plus 일일·월간 호출 한도를 넘으면 특허 검색·출원번호 조회가 막히고(등록·공개번호 조회는 Google Patents로 계속 동작), 키를 넣지 않아도 나머지 도구는 모두 동작합니다. 키를 넣는다면 아래 5번의 요청 수 제한을 꼭 거십시오.
 
-```bash
-openssl rand -hex 32
-```
+<details>
+<summary><b>토큰 방식으로 바꾸려면 (특정 사용자만 쓰게 할 때)</b></summary>
+
+1. `PATENT_LAW_MCP_ALLOW_ANONYMOUS`를 지우고 `PATENT_LAW_MCP_TOKEN`에 긴 임의 문자열을 넣은 뒤 다시 배포합니다.
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+2. 사용자는 커넥터 등록 때 **요청 헤더**에 이름 `authorization`, 값 `Bearer <토큰>`을 넣어야 합니다. 요청 헤더 항목은 베타라 계정에 따라 보이지 않을 수 있고, 그 계정은 연결할 수 없습니다.
+
+</details>
 
 ### 대시보드에서 넣기·고치기
 
@@ -56,7 +62,7 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 ### CLI로 넣기 (선택)
 
 ```bash
-vercel env add PATENT_LAW_MCP_TOKEN production
+vercel env add PATENT_LAW_MCP_ALLOW_ANONYMOUS production
 ```
 
 ```bash
@@ -69,10 +75,10 @@ vercel --prod
 2. 브라우저에서 `https://<프로젝트>.vercel.app/` 을 열면 아래처럼 설정 상태가 보입니다 (토큰·키 값은 표시하지 않음).
 
 ```json
-{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "Bearer 토큰", "kipris_api_key": true, "law_oc": false, "profile": "national"}
+{"name": "국가직무발명특허권등 업무 보조 도구", "mcp_endpoint": "/mcp", "auth": "없음 (공개)", "kipris_api_key": true, "law_oc": false, "profile": "national"}
 ```
 
-3. 커넥터 주소는 끝에 `/mcp`를 붙인 **`https://<프로젝트>.vercel.app/mcp`** 입니다. 이 주소와 토큰을 사용자에게 알려 주고, [README](../README.md)의 커넥터 등록 절차를 안내하십시오.
+3. 커넥터 주소는 끝에 `/mcp`를 붙인 **`https://<프로젝트>.vercel.app/mcp`** 입니다. 이 주소를 사용자에게 알려 주고, [README](../README.md)의 커넥터 등록 절차를 안내하십시오.
 
 ## 4. 사용량을 줄이는 저장소 설정 (`vercel.json`, 자동 적용)
 
@@ -85,12 +91,12 @@ vercel --prod
 
 ## 5. 비용 안전 설정 (대시보드, 직접 설정)
 
-**토큰을 꼭 설정하십시오.** `PATENT_LAW_MCP_TOKEN`이 있으면 토큰 없는 요청은 도구를 실행하기 전에 401로 끊겨 사용량이 거의 들지 않습니다.
+공개 운영이라 주소를 아는 누구나 요청할 수 있습니다. Hobby는 사용량을 넘어도 요금이 나가지 않지만, 한도를 다 쓰면 30일간 모든 사용자가 쓸 수 없게 되므로 **요청 수 제한을 꼭 거십시오.**
 
-**요청 수 제한 (Hobby에서도 1개 규칙 무료)** — 주소가 알려져 과도한 요청이 들어오는 것을 막습니다.
+**요청 수 제한 (필수, Hobby에서도 1개 규칙 무료)** — 한 사람이 과도하게 요청해 월 사용량을 소진하는 것을 막습니다.
 1. 프로젝트 → **Firewall** → **Rules**(또는 **Configure**) → **Add Rule**
 2. 조건: Request Path가 `/mcp`로 시작
-3. 동작: **Rate Limit** — 기준 IP, 고정 창 1분, 60회 (팀 인원이 많으면 늘리십시오), 초과 시 **429 Too Many Requests**
+3. 동작: **Rate Limit** — 기준 IP, 고정 창 1분, 60회 (Claude 대화 한 번에 도구 호출이 보통 몇 회라 일반 사용에는 충분합니다), 초과 시 **429 Too Many Requests**
 4. **Save** 후 **Publish**
 
 **Pro 요금제를 쓴다면 지출 한도**
@@ -106,8 +112,9 @@ vercel --prod
 | 증상 | 원인과 조치 |
 |:---|:---|
 | `/`를 열면 Vercel 로그인 화면이 나옴 | Deployment Protection이 켜져 있습니다. 고정 주소(`<프로젝트>.vercel.app`)를 쓰거나, **Settings → Deployment Protection**에서 Production 보호를 끄십시오. 커넥터 요청은 Anthropic 서버에서 오므로 Vercel 로그인을 통과할 수 없습니다 |
-| `"auth": "미설정 …"` | 토큰·공개 설정이 반영되지 않았습니다. 환경변수 확인 후 **Redeploy** |
-| 커넥터 연결 시 401 | 커넥터의 요청 헤더 값이 `Bearer <토큰>` 형식인지(앞의 `Bearer `와 공백 포함), 토큰이 환경변수와 같은지 확인 |
+| `"auth": "미설정 …"` | 공개 설정이 반영되지 않았습니다. `PATENT_LAW_MCP_ALLOW_ANONYMOUS=1` 확인 후 **Redeploy** |
+| 커넥터 연결 시 401 | `PATENT_LAW_MCP_TOKEN`이 남아 있어 토큰 방식으로 동작 중입니다. 지우고 다시 배포하십시오 |
+| 커넥터 연결 시 503 | `PATENT_LAW_MCP_ALLOW_ANONYMOUS=1`이 반영되지 않았습니다. 환경변수 확인 후 **Redeploy** |
 | 404 | 주소 끝의 `/mcp`가 빠졌는지 확인 |
 | 배포 실패 | Vercel 배포 로그(Build Logs)를 확인. Python 3.12(Vercel 기본)에서 `pyproject.toml`·`uv.lock`으로 의존성을 설치합니다 |
 
