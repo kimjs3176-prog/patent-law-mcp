@@ -43,15 +43,13 @@ MCP > calculate_royalty_estimate
 
 ```mermaid
 flowchart LR
-    A["📝 신고·승계<br/>process_invention_disclosure"] --> B["💰 등록보상금<br/>calculate_registration_compensation"]
-    B --> C["⚖️ 처분 방식<br/>plan_national_disposal"]
-    C --> D["🧮 실시료 예정가격<br/>calculate_royalty_estimate"]
-    D --> E["📄 계약<br/>design / review_licensing"]
-    E --> F["💵 처분보상금<br/>calculate_disposal_compensation"]
-    F --> G["🏢 수탁기관 보고·정산<br/>get_trustee_obligations"]
-    C -.-> H["🔁 무상실시·갱신<br/>evaluate_*"]
-    E -.-> I["🏛️ 심판·소송<br/>guide_national_dispute"]
+    A["📝 신고·승계"] --> B["💰 등록보상금"] --> C["⚖️ 처분 방식"] --> D["🧮 실시료 산정"]
+    D --> E["📄 계약"] --> F["💵 처분보상금"] --> G["🏢 수탁기관 정산"]
+    C -.-> H["🔁 무상실시·갱신"]
+    E -.-> I["🏛️ 심판·소송"]
 ```
+
+단계마다 대응하는 도구는 아래 [도구](#tools) 표에 있습니다.
 
 <a id="quickstart"></a>
 
@@ -112,18 +110,18 @@ docker run -p 8000:8000 -e PATENT_LAW_MCP_TOKEN=긴-임의-문자열 -e KIPRIS_A
 
 ### 1. 국가직무발명특허권 업무 — 핵심
 
-| 업무 단계 | 도구 | 하는 일 · 근거 |
-|:---|:---|:---|
-| 📝 신고·승계 | `process_invention_disclosure` | 신고서(별지 제1호)·성질 설명서 3항목·요약서 (시행규칙 제2조), 승계 고려사항 (제3조), 국가 명의 부기 명칭 (고시 제26조), 등록요청 서류 (시행규칙 제4조) |
-| 💰 등록보상 | `calculate_registration_compensation` | 특허 50만·실용신안 30만·디자인 20만 원 범위, 동일 발명 1회 (영 제16조), 별표 1 감액 |
-| ⚖️ 처분 방식 | `plan_national_disposal` | 유상·무상 4개 사유 (영 제10조), 수의계약·경쟁입찰과 예외 7개 (영 제11조), 계약기간 3년+연장 (시행규칙 제6조), 입찰 공고 30일 전 (제7조), 신청서류·계약서 기재사항 (제8·9조) |
-| 🧮 실시료 산정 | `calculate_royalty_estimate` | 총판매예정수량 × 공장도가격 평균 × 점유율 × 기본율 3%(2~4%), 단위당 실시료, 매각 예정가격 (시행규칙 제11조), 중소기업 재실시 2% (고시 제7조) |
-| 📄 계약 | `design_licensing_terms` · `review_licensing_contract` | 계약조건 초안 (시행규칙 제11조 산식·최소실시료 300만 원·경쟁입찰), 계약서 필수 조항 점검 |
-| 🔁 무상실시·갱신 | `evaluate_unutilized_free_license` · `evaluate_exclusive_renewal` | 미활용 특허 무상실시 (고시 제3~7조), 전용실시 갱신 5개 사유·30일 전 신청 (고시 제10조) |
-| 💵 처분보상 | `calculate_disposal_compensation` | 직접비용 공제 후 50% (고시 제11조 제2항), 별표 1 감액, 발명자별 비과세·과세 |
-| 🏢 수탁기관 | `get_trustee_obligations` | 분기 실적보고 다음 달 15일 (고시 제18조), 대장 분기 통지 (시행규칙 제13조), 승인·처분결과 통지·만료 후 정산 (고시 제17조, 시행규칙 제12조), 변경 30일 내 통보, 금품 수수 금지, 기여보상금 15% 범위 (영 제18조) |
-| 🏛️ 심판·소송 | `guide_national_dispute` | 심판당사자 지정·대리인 선임, 패소 시 소 제기 협의 (30일 불변기간), 국가소송법 준용 (고시 제21~24조) |
-| 📋 기준값 | `get_policy_table` | 적용 중인 기준값·근거 조항·원문 확인 필요 항목 |
+| 업무 단계 · 도구 | 하는 일 · 근거 |
+|:---|:---|
+| **📝 신고·승계**<br>`process_invention_disclosure` | 신고서(별지 제1호)·성질 설명서 3항목·요약서 (시행규칙 제2조), 승계 고려사항 (제3조), 국가 명의 부기 명칭 (고시 제26조), 등록요청 서류 (시행규칙 제4조) |
+| **💰 등록보상**<br>`calculate_registration_compensation` | 특허 50만·실용신안 30만·디자인 20만 원 범위, 동일 발명 1회 (영 제16조), 별표 1 감액 |
+| **⚖️ 처분 방식**<br>`plan_national_disposal` | 유상·무상 4개 사유 (영 제10조), 수의계약·경쟁입찰과 예외 7개 (영 제11조), 계약기간 3년+연장 (시행규칙 제6조), 입찰 공고 30일 전 (제7조), 신청서류·계약서 기재사항 (제8·9조) |
+| **🧮 실시료 산정**<br>`calculate_royalty_estimate` | 총판매예정수량 × 공장도가격 평균 × 점유율 × 기본율 3%(2~4%), 단위당 실시료, 매각 예정가격 (시행규칙 제11조), 중소기업 재실시 2% (고시 제7조) |
+| **📄 계약**<br>`design_licensing_terms`<br>`review_licensing_contract` | 계약조건 초안 (시행규칙 제11조 산식·최소실시료 300만 원·경쟁입찰), 계약서 필수 조항 점검 |
+| **🔁 무상실시·갱신**<br>`evaluate_unutilized_free_license`<br>`evaluate_exclusive_renewal` | 미활용 특허 무상실시 (고시 제3~7조), 전용실시 갱신 5개 사유·30일 전 신청 (고시 제10조) |
+| **💵 처분보상**<br>`calculate_disposal_compensation` | 직접비용 공제 후 50% (고시 제11조 제2항), 별표 1 감액, 발명자별 비과세·과세 |
+| **🏢 수탁기관**<br>`get_trustee_obligations` | 분기 실적보고 다음 달 15일 (고시 제18조), 대장 분기 통지 (시행규칙 제13조), 승인·처분결과 통지·만료 후 정산 (고시 제17조, 시행규칙 제12조), 변경 30일 내 통보, 금품 수수 금지, 기여보상금 15% 범위 (영 제18조) |
+| **🏛️ 심판·소송**<br>`guide_national_dispute` | 심판당사자 지정·대리인 선임, 패소 시 소 제기 협의 (30일 불변기간), 국가소송법 준용 (고시 제21~24조) |
+| **📋 기준값**<br>`get_policy_table` | 적용 중인 기준값·근거 조항·원문 확인 필요 항목 |
 
 ### 2. 권리 유지·기한 관리
 
