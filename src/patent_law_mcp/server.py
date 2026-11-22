@@ -1,4 +1,4 @@
-"""Patent Law MCP 메인 서버 (FastMCP 기반)
+"""국가직무발명특허권등 업무 보조 도구 — MCP 서버 (식별자: patent-law-mcp, FastMCP 기반)
 
 지식재산처 국가직무발명특허권(국유특허) 업무 중심 실무 보조 도구
 (신고·승계·등록보상 → 처분 방식·실시료 예정가격 → 계약 → 처분보상 → 수탁기관 관리 → 심판·소송)
@@ -52,10 +52,13 @@ from patent_law_mcp.tools.kipris_connector import fetch_patent_smart, inspect_an
 from patent_law_mcp.tools.law_lookup import get_law_article, search_laws
 from patent_law_mcp.tools.patent_search import search_patents
 
+DISPLAY_NAME = "국가직무발명특허권등 업무 보조 도구"
+
 mcp = FastMCP(
-    name="patent-law-mcp",
+    name="patent-law-mcp",  # 설정 키·도구 접두사로 쓰이는 식별자 (영문 유지). 표시 이름은 DISPLAY_NAME
+    website_url="https://github.com/kimjs3176-prog/patent-law-mcp",
     instructions=(
-        "지식재산처 국가직무발명특허권(국유특허) 업무 중심 MCP 서버. 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 "
+        f"{DISPLAY_NAME}(patent-law-mcp) — 지식재산처 국가직무발명특허권(국유특허) 업무 중심 MCP 서버. 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 "
         "규정·시행규칙과 지식재산처 고시(업무 운영요령)를 기준으로 신고·승계, 등록보상금, 처분 방식 판정, 실시료 예정가격, "
         "계약, 처분보상금, 수탁기관 보고·정산, 심판·소송 절차를 다룹니다. 대학·출연연(public_research)·민간 기업(private_company) "
         "프로파일은 profile 인자나 PATENT_LAW_MCP_PROFILE로 보조 지원합니다. "
@@ -64,6 +67,13 @@ mcp = FastMCP(
         "결과의 legal_audit_basis.source_text_verified_on은 원문 대조일이며, 그 이후 개정 여부는 check_legal_source_updates로 확인합니다."
     ),
 )
+
+try:  # serverInfo.version에 MCP SDK 버전 대신 이 패키지 버전을 알린다
+    from importlib.metadata import version as _pkg_version
+
+    mcp._mcp_server.version = _pkg_version("patent-law-mcp")
+except Exception:  # noqa: BLE001 — 설치 정보가 없으면 SDK 기본값 사용
+    pass
 
 LOCAL = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
 NETWORK = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True)

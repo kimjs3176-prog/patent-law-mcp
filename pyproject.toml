@@ -1,7 +1,7 @@
 [project]
 name = "patent-law-mcp"
 version = "0.2.0"
-description = "공공·국유 특허 기술이전 및 국가공무원 등 직무발명 처분·보상 실무 보조 MCP 서버"
+description = "국가직무발명특허권등 업무 보조 도구 — 지식재산처 국유특허 신고·보상·처분·수탁기관 업무 MCP 서버"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
