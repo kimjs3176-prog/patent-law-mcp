@@ -163,7 +163,7 @@ def design_licensing_terms(
         "financial_terms": financial,
         "required_procedures": procedures,
         "mandatory_practice_clauses": clauses,
-        "legal_audit_basis": pm.audit_block("요율"),
+        "legal_audit_basis": pm.audit_block("예정가격 산식") if national else pm.audit_block("요율"),
     } | ({"contract_term_rule": f"계약기간 {pm.section('disposal_procedure')['max_contract_years']}년 이내 (준비기간 1년 이상·존속기간 4년 내 만료 시 연장 가능, {art['contract_term']}) — plan_national_disposal로 상한일 계산"} if national else {})
 
 

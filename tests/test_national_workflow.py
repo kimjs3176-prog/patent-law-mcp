@@ -168,3 +168,38 @@ def test_disposal_compensation_reduction_national_only():
     with pytest.raises(ValueError, match="national"):
         calculate_disposal_compensation(10_000_000, [{"name": "A", "share_rate": 1.0}], payout_ratio=0.5,
                                         profile="public_research", reduction_ground="confidentiality_breach")
+
+
+# ---------------------------------------------------------------- 답변 품질 점검에서 찾은 문제 (회귀 방지)
+def test_free_disposal_has_no_quote_or_compensation():
+    r = plan_national_disposal("non_exclusive", free_ground=1)
+    assert not any("견적서" in d for d in r["documents_from_applicant"])
+    assert any("처분보상금(영 제17조)은 없음" in s for s in r["procedure_steps"])
+    assert r["legal_audit_basis"]["unverified_items"] == []
+
+
+def test_free_with_competitive_bidding_is_flagged():
+    r = plan_national_disposal("sale", free_ground=2)
+    assert any("경쟁입찰로 진행할 수 없습니다" in w for w in r["warnings"])
+    assert not any("수의계약신청서에 첨부" in d for d in r["documents_from_applicant"])
+
+
+def test_expiry_extension_only_when_it_extends():
+    r = plan_national_disposal("exclusive", private_contract_exception=7, contract_start_date=date(2026, 12, 1),
+                               patent_expiry_date=date(2029, 5, 10))
+    ext = r["contract_term"]["extensions"]
+    assert not any("제2호" in e for e in ext) and any("2029-05-10" in e for e in ext)
+
+
+def test_sale_without_quantity_does_not_cite_unit_price_rule():
+    r = calculate_royalty_estimate([30_000], 0.1, purpose="sale")
+    assert "전용·통상실시에만 적용" in r["basis"]
+    assert r["legal_audit_basis"]["unverified_items"] == []
+
+
+def test_zero_payout_tax_note():
+    from patent_law_mcp.tools.employee_invention_practice import calculate_disposal_compensation
+
+    r = calculate_disposal_compensation(1_000_000, [{"name": "A", "share_rate": 1.0}],
+                                        reduction_ground="unauthorized_filing_after_report")
+    assert r["payment_table"][0]["tax_note"] == "지급액 없음"
