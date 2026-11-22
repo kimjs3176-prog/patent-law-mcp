@@ -49,6 +49,8 @@ EXPECTED_TOOLS = {
     "calculate_disposal_compensation", "evaluate_unutilized_free_license", "evaluate_exclusive_renewal",
     "get_policy_table", "verify_tech_transfer_scope_match", "bundle_patents_for_transfer",
     "find_target_licensees_by_patent", "ground_patent_applications", "search_patents", "search_laws", "get_law_article", "calculate_patent_deadline", "calculate_patent_term", "calculate_annuity_schedule", "check_patent_rights_status",
+    "calculate_royalty_estimate", "calculate_registration_compensation", "plan_national_disposal",
+    "get_trustee_obligations", "guide_national_dispute", "check_portfolio_annuities",
 }
 
 
@@ -56,6 +58,7 @@ def test_registered_tools():
     tools = asyncio.run(mcp.list_tools())
     names = {t.name for t in tools}
     assert EXPECTED_TOOLS <= names
+    assert tools[0].name == "process_invention_disclosure"  # 국가직무발명 업무 도구가 목록 맨 앞
     assert not {"find_patents_by_business_need", "recommend_similar_patents", "recommend_free_transfer_patents"} & names
     fetch = next(t for t in tools if t.name == "fetch_patent_smart")
     assert "api_key" not in fetch.inputSchema["properties"]

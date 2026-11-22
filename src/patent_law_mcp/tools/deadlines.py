@@ -15,7 +15,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import holidays
 import yaml
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 RULES_FILE = Path(__file__).parent.parent / "policies" / "patent_deadlines.yaml"
 
@@ -232,6 +232,69 @@ def calculate_annuity_schedule(
         ],
         "unverified_items": [n for n in _rules()["verification_notes"] if "연차료" in n],
         "note": "납부 금액은 계산하지 않습니다 (특허료 등의 징수규칙 확인). 실제 납부 이력은 등록원부로 확인하십시오.",
+    }
+
+
+class PortfolioPatent(BaseModel):
+    patent_id: str = Field(..., min_length=1, description="관리번호 또는 등록번호")
+    registration_date: date = Field(..., description="설정등록일")
+    application_date: date = Field(..., description="출원일")
+    paid_through_year: int = Field(3, ge=3, le=30, description="납부를 마친 마지막 연차")
+    right_type: RightType = Field("patent", description="patent 또는 utility_model")
+    extension_days: int = Field(0, ge=0, le=3650, description="존속기간 연장 일수")
+
+
+def check_portfolio_annuities(
+    patents: Annotated[List[PortfolioPatent], Field(min_length=1, max_length=500)],
+    as_of: Optional[date] = None,
+    alert_days: Annotated[int, Field(ge=1, le=365)] = 90,
+) -> Dict[str, Any]:
+    """여러 특허의 다음 연차료 납부기한을 한 번에 계산해 기한이 가까운 순으로 정렬하고, 추가납부·회복 기간에 들어간 건을 표시합니다.
+
+    Args:
+        patents: 특허 목록 (등록일·출원일·납부 완료 연차)
+        as_of: 기준일 (비우면 오늘)
+        alert_days: 이 일수 안에 납부기한이 오는 건을 '임박'으로 표시
+    """
+    today = as_of or date.today()
+    rows: List[Dict[str, Any]] = []
+    for p in patents:
+        p = p if isinstance(p, PortfolioPatent) else PortfolioPatent.model_validate(p)
+        r = calculate_annuity_schedule(
+            p.registration_date, p.application_date, p.paid_through_year, p.right_type, p.extension_days, as_of=today, upcoming=1
+        )
+        nxt = r["schedule"][0] if r["schedule"] else None
+        if nxt is None:
+            category = "납부 완료"
+        elif r["status"].startswith("정상"):
+            days = (date.fromisoformat(nxt["due_date_if_holiday_shifted"]) - today).days
+            category = "임박" if days <= alert_days else "정상"
+        elif r["status"].startswith("추가납부기간 —"):
+            category = "추가납부기간"
+        elif r["status"].startswith("추가납부기간 경과"):
+            category = "회복 신청 가능"
+        else:
+            category = "소멸 추정"
+        rows.append({
+            "patent_id": p.patent_id,
+            "category": category,
+            "next_year": nxt["year"] if nxt else None,
+            "due_date": nxt["due_date"] if nxt else None,
+            "late_payment_until": nxt["late_payment_until"] if nxt else None,
+            "expiry_date": r["expiry_date"],
+            "status": r["status"],
+        })
+    order = {"소멸 추정": 0, "회복 신청 가능": 1, "추가납부기간": 2, "임박": 3, "정상": 4, "납부 완료": 5}
+    rows.sort(key=lambda x: (order[x["category"]], x["due_date"] or "9999"))
+    counts: Dict[str, int] = {}
+    for row in rows:
+        counts[row["category"]] = counts.get(row["category"], 0) + 1
+    return {
+        "as_of": today.isoformat(),
+        "alert_days": alert_days,
+        "summary": counts,
+        "patents": rows,
+        "note": "납부 이력은 입력값 기준입니다. 실제 납부·소멸 여부는 등록원부로 확인하고, 국유특허 연차료 납부 주체는 소관 기관 기준을 따르십시오.",
     }
 
 

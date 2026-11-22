@@ -10,6 +10,9 @@
 #   제3조·제4조·제5조·제6조·제7조·제9조·제10조·제11조 문언과 아래 수치 일치 확인
 # - 규정: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 [대통령령 제35809호, 2025.10.01. 시행]
 #   제10조 제2항, 제11조, 제16조, 제17조 확인
+# - 시행규칙: 국가공무원 등 직무발명의 처분·관리 및 보상 등에 관한 규정 시행규칙 [총리령 제2054호 개정, 2025.10.01. 시행]
+#   제6조~제13조 확인 (2026-11-22)
+# - 고시 별표 1 보상금등의 감액기준 (PDF 원문, 2026-11-22 확인)
 # - 소득세법 시행령 제17조의3 [대통령령 제36737호, 2026.10.01. 시행]: 연 700만원, 특수관계인 제외 확인
 
 metadata:
@@ -24,7 +27,8 @@ metadata:
 verification_notes:
   - "처분보상금: 규정 제17조 제1항은 '처분수입금의 100분의 50 이상의 범위에서 고시하는 바에 따라' 지급하도록 하고, 고시 제11조 제2항은 '직접비용을 공제한 금액의 100분의 50'으로 정함. 이 도구는 고시 산식을 적용하므로, 공제 후 금액이 처분수입금의 50%에 못 미치는 경우의 적용은 실무 확인 필요"
   - "미활용 특허 무상실시: 고시 제3조 제2항은 근거를 '영 제10조 제2항 제1호'로 들지만, 현행 영 제10조 제2항 제1호는 '농업인·어업인의 소득 증대'임 (2024.11.12. 영 개정 후 조문 대응 확인 필요)"
-  - "기업 규모별 요율(contract_practice.reference_rates_by_scale)은 기관 내부 참고값이며 법정 요율이 아님"
+  - "보상금 감액: 고시 별표 1은 비밀유지 위반 시 발명기관·종사자의 '기관포상금(영 제18조 제1항)'도 50% 감액하도록 적고 있으나, 현행 영 제18조는 수탁기관 '기여보상금'(2024.11.12. 영 개정으로 기관포상금 폐지)이라 해당 행은 적용 대상 확인 필요"
+  - "기업 규모별 요율(contract_practice.reference_rates_by_scale)은 대학·민간 프로파일 비교용 참고값이며, 국유특허 실시료 예정가격은 시행규칙 제11조 산식(기본율 3%, 2~4%)을 따름"
 
 # 출력에 표기되는 근거 조항 — 조항 번호가 바뀌면 여기만 고치십시오.
 articles:
@@ -38,6 +42,31 @@ articles:
   exclusive_renewal_private_contract: "규정 제11조 제2항 제4호"
   registration_compensation: "규정 제16조"
   disposal_compensation: "고시 제11조 제2항 (규정 제17조 제1항)"
+  royalty_estimation: "시행규칙 제11조"
+  contract_term: "시행규칙 제6조"
+  bid_notice: "시행규칙 제7조"
+  private_contract_application: "시행규칙 제8조"
+  contract_items: "시행규칙 제9조"
+  disposal_result_notice: "시행규칙 제12조"
+  ledger: "시행규칙 제13조, 고시 제19조"
+  trustee_contract_approval: "고시 제17조"
+  quarterly_report: "고시 제18조"
+  trustee_change_notice: "고시 제15조 제2항"
+  trustee_scope: "고시 제16조"
+  trustee_no_extra_payment: "고시 제15조 제6항"
+  trustee_settlement: "고시 제17조 제3항"
+  contribution_compensation: "규정 제18조"
+  opinion_hearing: "규정 제12조"
+  sale_price_basis: "시행규칙 제11조 제1항"
+  free_use_by_state_agency: "규정 제10조 제3항, 시행규칙 제5조"
+  exclusive_bidder_plan: "고시 제8조"
+  invention_report_documents: "시행규칙 제2조"
+  succession_considerations: "시행규칙 제3조"
+  registration_request: "시행규칙 제4조"
+  applicant_name_annotation: "고시 제26조 (영 제7조 제1항)"
+  compensation_reduction: "고시 제11조 제1항 (별표 1 보상금등의 감액기준)"
+  trial_procedure: "고시 제21조·제22조"
+  litigation_procedure: "고시 제23조·제24조"
   exclusive_competitive_bidding: "규정 제11조 제2항"
   non_exclusive_private_contract: "규정 제11조 제1항"
   free_disposal_grounds: "규정 제10조 제2항"
@@ -119,3 +148,61 @@ income_tax:
   tax_free_limit_annual: 7000000       # 직무발명보상금 비과세 한도 (연간, 재직·퇴직 합산)
   retired_withholding_rate: 0.22       # 퇴직 후 수령분(기타소득) 원천징수율: 소득세 20% + 지방소득세 2%
   local_income_tax_ratio: 0.1          # 지방소득세 = 소득세 × 10%
+
+# 실시료 예정가격 (시행규칙 제11조)
+royalty_estimation:
+  base_rate: 0.03            # 기본율 3%
+  base_rate_min: 0.02        # 실용적 가치·산업상 이용가능성을 고려해 2% 이상
+  base_rate_max: 0.04        # 4% 이하로 정할 수 있음
+  # 고시 제7조: 무상실시 종료 후 중소기업 재실시 시 기본율 2% 적용 가능 → unutilized_free_license.sme_renewal_base_rate
+
+# 처분 절차 (시행규칙 제6조~제9조·제12조, 고시 제17조)
+disposal_procedure:
+  max_contract_years: 3                 # 시행규칙 제6조: 전용·통상실시 계약기간 3년 이내
+  preparation_extension_min_years: 1    # 준비기간이 1년 이상이면 그 준비기간만큼 연장
+  near_expiry_years: 4                  # 존속기간이 계약일부터 4년 이내 만료되면 만료 시까지
+  bid_notice_days: 30                   # 시행규칙 제7조: 입찰일 30일 전까지 공고
+  bid_notice_place: "국유재산법 제31조 제2항에 따른 정보처리장치(온비드), 필요 시 관보·일간신문"
+  private_contract_documents:           # 시행규칙 제8조 (별지 제4호서식 수의계약신청서 첨부)
+    - "해당 국유특허권의 실시에 관한 사업계획서 (사업계획 개요, 시설 규모, 수량과 금액을 적은 연도별 생산 및 판매 계획)"
+    - "매수대금 또는 실시료에 대한 견적서"
+    - "무상실시 사유서 (영 제10조 제2항 제1호·제2호에 따라 무상으로 실시하려는 경우만)"
+  contract_required_items:              # 시행규칙 제9조 제2항
+    - "처분하려는 국가직무발명특허권등의 표시"
+    - "전용실시권·통상실시권의 경우 그 실시권의 범위"
+    - "처분금액 및 그 지급방법"
+  identity_checks:                      # 시행규칙 제9조 제3항 (행정정보 공동이용, 확인 불가 시 제출)
+    - "법인 등기사항증명서 (법인)"
+    - "사업자등록증명 (개인)"
+    - "인감증명서 또는 본인서명사실확인서"
+    - "고유번호증 사본 (사업자등록증이 없는 경우)"
+  result_notice_items:                  # 시행규칙 제12조: 수탁기관 처분결과 통지 (계약서 사본 첨부)
+    - "국가직무발명특허권등의 내용"
+    - "처분에 따른 대금의 수납에 관한 사항"
+    - "처분보상금의 지급에 관한 사항"
+  free_disposal_grounds:                # 규정 제10조 제2항 각 호
+    - "1. 농업인·어업인의 소득 증대를 위하여 필요한 경우"
+    - "2. 중소기업의 수출 증진을 위하여 필요한 경우"
+    - "3. 국가기관의 장이 공공의 목적을 위하여 지식재산처장의 승인을 받아 직접 실시하려는 경우 (시행규칙 별지 제3호서식 무상실시 승인신청서)"
+    - "4. 그 밖에 지식재산처장이 국가시책 추진을 위하여 필요하다고 인정하는 경우"
+
+# 수탁기관 의무 (고시 제15조·제17조·제18조, 시행규칙 제13조)
+trustee_obligations:
+  quarterly_report_day: 15              # 고시 제18조: 분기 실적보고서를 다음 달 15일까지 제출
+  change_notice_days: 30                # 고시 제15조 제2항: 기관·조직 변경 30일 이내 서면 통보
+  contribution_compensation_max_ratio: 0.15   # 규정 제18조: 수탁기관 기여보상금, 처분수입금의 100분의 15 범위
+
+# 보상금등의 감액기준 (고시 제11조 제1항 별표 1) — 발명자의 등록보상금(영 제16조)·처분보상금(영 제17조)
+compensation_reduction:
+  unauthorized_filing_after_report:
+    description: "영 제5조의 직무발명 신고는 하였으나 영 제8조 제1항을 위반하여 국가승계를 하지 아니한다는 결정의 통지를 받지 아니하고 자기 명의로 출원하거나 권리를 제3자에게 이전한 경우"
+    pay_ratio_options: [0.0]
+    rule: "보상금 전액을 미지급"
+  unreported_own_filing:
+    description: "영 제5조 및 제8조 제1항을 위반하여 직무발명 신고를 하지 아니하고 자기 명의로 출원하거나 권리를 제3자에게 이전한 경우"
+    pay_ratio_options: [0.0, 0.5]
+    rule: "보상금 전액을 미지급하거나 50%를 감액하여 지급"
+  confidentiality_breach:
+    description: "영 제21조 제2항을 위반하여 발명의 내용에 대하여 비밀을 유지하지 아니한 경우"
+    pay_ratio_options: [0.5]
+    rule: "보상금의 50%를 감액하여 지급"

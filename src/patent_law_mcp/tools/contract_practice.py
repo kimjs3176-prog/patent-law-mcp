@@ -30,6 +30,7 @@ def design_licensing_terms(
     contract_period_years: Annotated[int, Field(ge=1, le=20)] = 3,
     expected_sales_annual: Annotated[Optional[int], Field(ge=0)] = None,
     profile: Optional[ProfileName] = None,
+    share_rate: Annotated[Optional[float], Field(gt=0, le=1)] = None,
 ) -> Dict[str, Any]:
     """기술실시계약 조건 초안을 산출합니다 (국유특허는 최소실시료·경쟁입찰 등 고시·규정 기준 반영).
 
@@ -41,7 +42,10 @@ def design_licensing_terms(
         contract_period_years: 계약 기간(년)
         expected_sales_annual: 실시 제품 예상 연매출(원). 주면 연간 경상기술료를 추정합니다
         profile: "national"(국유특허), "public_research"(대학·출연연), "private_company"(민간). 비우면 기본 프로파일
+        share_rate: 국유특허 점유율 0~1 (단위 제품에 특허가 이용되는 비율). 주면 시행규칙 제11조 요율을 계산
     """
+    if share_rate is not None and not 0 < share_rate <= 1:
+        raise ValueError("share_rate는 0 초과 1 이하여야 합니다.")
     require_choice(license_type, ("non_exclusive", "exclusive"), "license_type")
     require_choice(company_scale, ("farmer", "sme", "middle", "large"), "company_scale")
     if not 1 <= contract_period_years <= 20:
@@ -54,29 +58,50 @@ def design_licensing_terms(
     national = pm.is_national
     art = pm.articles
     practice = pm.section("contract_practice")
-    rate = practice["reference_rates_by_scale"][company_scale]
     excl = pm.section("exclusive_licensing") if national else {}
     min_royalty = excl.get("minimum_royalty_amount", 0)
     deadline = excl.get("payment_deadline_days")
-    lump_sum = rate["lump_sum"] * (practice["exclusive_lump_sum_multiplier"] if is_exclusive else 1)
-    running_rate = rate["running_rate"] * (practice["exclusive_running_multiplier"] if is_exclusive else 1)
-    if national and is_exclusive and lump_sum < min_royalty:
-        lump_sum = min_royalty
+    if national:
+        # 국유특허: 시행규칙 제11조 산식 (공장도가격 × 점유율 × 기본율). 기업 규모별 참고 요율은 쓰지 않는다
+        royalty_rule = pm.section("royalty_estimation")
+        lump_sum = min_royalty if is_exclusive else 0
+        running_rate = royalty_rule["base_rate"] * (share_rate if share_rate is not None else 1.0)
+        rate_basis = (
+            f"{art['royalty_estimation']}: 실시료 예정가격 = 총판매예정수량 × 판매단가(연도별 공장도가격 평균) × 점유율 × 기본율 "
+            f"{royalty_rule['base_rate']:.0%} (2~4% 조정 가능). 정밀 산정은 calculate_royalty_estimate를 쓰십시오"
+        )
+        running_text = (
+            f"공장도가격 × 점유율 {share_rate:g} × 기본율 {royalty_rule['base_rate']:.0%} = 공장도가격의 {running_rate * 100:.2f}%"
+            if share_rate is not None
+            else f"공장도가격 × 점유율 × 기본율 {royalty_rule['base_rate']:.0%} (점유율 미입력 — share_rate를 주면 요율 계산)"
+        )
+    else:
+        rate = practice["reference_rates_by_scale"][company_scale]
+        lump_sum = rate["lump_sum"] * (practice["exclusive_lump_sum_multiplier"] if is_exclusive else 1)
+        running_rate = rate["running_rate"] * (practice["exclusive_running_multiplier"] if is_exclusive else 1)
+        rate_basis = f"{rate['description']} — 기관 내부 참고 요율이며 법정 요율이 아닙니다"
+        running_text = f"실시 제품 순매출액의 {running_rate * 100:.2f}%"
 
     financial: Dict[str, Any] = {
         "lump_sum_fee_krw": int(lump_sum),
         "lump_sum_payment": f"계약 체결일부터 {deadline}일 이내 납부" if national and is_exclusive else "계약서에서 납부 기한 지정",
-        "running_royalty_rate": f"실시 제품 순매출액의 {running_rate * 100:.2f}%",
-        "rate_basis": f"{rate['description']} — 기관 내부 참고 요율이며 법정 요율이 아닙니다",
+        "running_royalty_rate": running_text,
+        "rate_basis": rate_basis,
         "minimum_royalty_rule": (
             f"전용실시 최소실시료 {min_royalty:,}원 이상, 계약일부터 {deadline}일 이내 납부 ({art['exclusive_minimum_royalty']})"
             if national and is_exclusive
             else ("해당 없음 (통상실시)" if national else "해당 없음 (국유특허 고시 기준은 이 프로파일에 적용되지 않음)")
         ),
     }
-    if expected_sales_annual is not None:
+    if expected_sales_annual is not None and (not national or share_rate is not None):
         financial["estimated_annual_running_royalty_krw"] = int(round(expected_sales_annual * running_rate))
-        financial["estimate_basis"] = f"예상 연매출 {expected_sales_annual:,}원 × {running_rate * 100:.2f}%"
+        financial["estimate_basis"] = (
+            f"예상 연매출(공장도가격 기준) {expected_sales_annual:,}원 × {running_rate * 100:.2f}%"
+            if national
+            else f"예상 연매출 {expected_sales_annual:,}원 × {running_rate * 100:.2f}%"
+        )
+    elif expected_sales_annual is not None:
+        financial["estimate_basis"] = "국유특허는 점유율(share_rate)이 있어야 실시료를 추정합니다 (시행규칙 제11조 제3항 제3호)."
 
     procedures: List[str] = []
     if not national:
@@ -139,7 +164,7 @@ def design_licensing_terms(
         "required_procedures": procedures,
         "mandatory_practice_clauses": clauses,
         "legal_audit_basis": pm.audit_block("요율"),
-    }
+    } | ({"contract_term_rule": f"계약기간 {pm.section('disposal_procedure')['max_contract_years']}년 이내 (준비기간 1년 이상·존속기간 4년 내 만료 시 연장 가능, {art['contract_term']}) — plan_national_disposal로 상한일 계산"} if national else {})
 
 
 # ---------------------------------------------------------------- 계약서 검토

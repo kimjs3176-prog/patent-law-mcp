@@ -61,10 +61,15 @@ def test_design_rejects_free_text_choices():
 
 
 def test_non_exclusive_has_no_exclusive_clauses_and_uses_sales():
-    r = design_licensing_terms("x", "non_exclusive", "sme", expected_sales_annual=500_000_000)
+    # 국유특허: 시행규칙 제11조 — 공장도가격 × 점유율 × 기본율 3%
+    r = design_licensing_terms("x", "non_exclusive", "sme", expected_sales_annual=500_000_000, share_rate=0.5)
     clauses = " ".join(c["clause"] for c in r["mandatory_practice_clauses"])
     assert "전용실시" not in clauses and "갱신" not in clauses
     assert r["financial_terms"]["estimated_annual_running_royalty_krw"] == 7_500_000
+    assert "시행규칙 제11조" in r["financial_terms"]["rate_basis"]
+    no_share = design_licensing_terms("x", "non_exclusive", "sme", expected_sales_annual=500_000_000)
+    assert "estimated_annual_running_royalty_krw" not in no_share["financial_terms"]
+    assert "점유율" in no_share["financial_terms"]["estimate_basis"]
 
 
 def test_exclusive_mentions_bidding_and_minimum_royalty():

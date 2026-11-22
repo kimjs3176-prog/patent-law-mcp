@@ -48,7 +48,13 @@ NATIONAL_SCHEMA: Dict[str, Dict[str, tuple]] = {
             "free_license", "joint_patentee_consent", "licensee_limit", "free_license_paid_conversion",
             "sme_renewal_rate", "exclusive_minimum_royalty", "exclusive_renewal", "exclusive_competitive_bidding",
             "non_exclusive_private_contract", "free_disposal_grounds", "exclusive_renewal_private_contract",
-            "registration_compensation",
+            "registration_compensation", "royalty_estimation", "contract_term", "bid_notice",
+            "private_contract_application", "contract_items", "disposal_result_notice", "ledger",
+            "trustee_contract_approval", "quarterly_report", "trustee_change_notice", "trustee_scope",
+            "trustee_no_extra_payment", "trustee_settlement", "contribution_compensation", "opinion_hearing",
+            "sale_price_basis", "free_use_by_state_agency", "exclusive_bidder_plan", "invention_report_documents",
+            "succession_considerations", "registration_request", "applicant_name_annotation",
+            "compensation_reduction", "trial_procedure", "litigation_procedure",
         )
     },
     "unutilized_free_license": {
@@ -65,6 +71,29 @@ NATIONAL_SCHEMA: Dict[str, Dict[str, tuple]] = {
     },
     "exclusive_renewal": {"application_deadline_days_before_expiry": (int,), "grounds": (dict,)},
     "registration_compensation": {"patent": (int,), "utility_model": (int,), "design": (int,)},
+    "royalty_estimation": {"base_rate": _NUM, "base_rate_min": _NUM, "base_rate_max": _NUM},
+    "disposal_procedure": {
+        "max_contract_years": (int,),
+        "preparation_extension_min_years": (int,),
+        "near_expiry_years": (int,),
+        "bid_notice_days": (int,),
+        "bid_notice_place": (str,),
+        "private_contract_documents": (list,),
+        "contract_required_items": (list,),
+        "identity_checks": (list,),
+        "result_notice_items": (list,),
+        "free_disposal_grounds": (list,),
+    },
+    "compensation_reduction": {
+        "unauthorized_filing_after_report": (dict,),
+        "unreported_own_filing": (dict,),
+        "confidentiality_breach": (dict,),
+    },
+    "trustee_obligations": {
+        "quarterly_report_day": (int,),
+        "change_notice_days": (int,),
+        "contribution_compensation_max_ratio": _NUM,
+    },
 }
 
 INSTITUTION_SCHEMA: Dict[str, Dict[str, tuple]] = {
