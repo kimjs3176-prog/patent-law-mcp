@@ -94,10 +94,25 @@ def process_invention_disclosure(
         "inventors": inventor_names,
         "rnd_source": research_source,
         "novelty_risk": novelty,
+        "required_documents": [
+            "직무발명신고서 (시행규칙 별지 제1호서식)",
+            "직무발명의 성질에 대한 설명서 — ① 소속 기관의 업무(관련 조사·연구·시험 기능 유무) ② 발명자의 직무 "
+            "③ 직무발명의 성질(기관 업무 범위·발명자 직무 해당 여부 의견), 발명자 기명날인",
+            "직무발명 요약서 (특허법 시행규칙 제21조 제2항의 요약서에 준함)",
+        ],
+        "documents_basis": art["invention_report_documents"],
+        "succession_considerations": f"국가승계 결정 시 현재 또는 장래의 실용적 가치 및 산업상 이용가능성 등을 고려 ({art['succession_considerations']})",
+        "applicant_name_rule": (
+            f"국가 명의 출원 시 부기하는 발명기관의 장 명칭: 중앙행정기관은 그 기관장 명칭, 합의제 행정기관은 그 기관 명칭, "
+            f"하위기관은 1차 소속기관에 한정해 그 기관장 명칭 ({art['applicant_name_annotation']})"
+        ),
         "administrative_steps": [
-            "1. 직무발명심의위원회 안건 상정 (직무 해당 여부·국가 승계 여부 의결)",
-            f"2. {authority} 국유특허 출원 절차에 따라 출원 의뢰",
-            f"3. 등록 시 등록보상금 지급 품의 (특허 {reg['patent']:,}원, {art['registration_compensation']})",
+            "1. 직무발명신고서·성질 설명서·요약서를 발명기관의 장에게 제출 (시행규칙 제2조 제1항)",
+            "2. 직무발명심의위원회 안건 상정 (직무 해당 여부·국가 승계 여부 의결)",
+            f"3. {authority} 국유특허 출원 절차에 따라 국가 명의로 출원 (발명기관의 장 명칭 부기, {art['applicant_name_annotation']})",
+            f"4. 등록결정 후 국가직무발명특허권등 등록요청서(별지 제2호서식)에 의견서·결정서 사본·보상금 서류 첨부해 요청 ({art['registration_request']})",
+            f"5. 등록보상금 지급 (특허 {reg['patent']:,}원·실용신안 {reg['utility_model']:,}원·디자인 {reg['design']:,}원 범위, "
+            f"동일 발명 1회, {art['registration_compensation']}) — calculate_registration_compensation으로 발명자별 배분",
         ],
         "legal_audit_basis": pm.audit_block("등록보상금"),
     }

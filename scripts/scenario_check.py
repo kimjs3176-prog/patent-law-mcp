@@ -100,7 +100,7 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     # 0. 서버 기본
     tools = await session.list_tools()
     names = {t.name for t in tools.tools}
-    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 26 else "FAIL", f"{len(names)}개"))
+    results.append(("0. 서버", "도구 목록", "PASS" if len(names) == 32 else "FAIL", f"{len(names)}개"))
 
     # 1. 기술이전 상담 (국유특허·실데이터)
     s = "1. 기술이전 상담"
@@ -117,7 +117,7 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     else:
         results.append((s, "권리범위 1차 대조", "SKIP", "선행 조회에서 청구항을 확보하지 못함"))
     await step(s, "전용실시 계약조건", "design_licensing_terms",
-               {"patent_id": "10-1070281", "license_type": "exclusive", "company_scale": "sme", "expected_sales_annual": 500_000_000},
+               {"patent_id": "10-1070281", "license_type": "exclusive", "company_scale": "sme", "expected_sales_annual": 500_000_000, "share_rate": 0.3},
                lambda e, d: ok(not e and d["financial_terms"]["lump_sum_fee_krw"] >= 3_000_000
                                and len(d["financial_terms"]["private_contract_exceptions"]) == 7
                                and d["financial_terms"]["estimated_annual_running_royalty_krw"] > 0, str(d)[:120]))
@@ -226,6 +226,35 @@ async def run_steps(session: ClientSession, offline: bool) -> List[Result]:
     await step(s, "민간 기업 신고 (예약승계)", "process_invention_disclosure",
                {"title": "센서", "inventor_names": ["A"], "profile": "private_company"},
                lambda e, d: ok(not e and "발명 완성 때부터 사용자에게 승계됩니다" in d["succession_rule"], str(d)[:120]))
+    # 11. 국가직무발명특허권 업무 흐름 (신고 → 등록보상 → 처분 방식 → 실시료 → 수탁기관 → 분쟁)
+    s = "11. 국가직무발명 업무"
+    await step(s, "신고 서류·부기 명칭", "process_invention_disclosure",
+               {"title": "굳지 않는 떡", "inventor_names": ["홍길동"], "profile": "national"},
+               lambda e, d: ok(not e and d["required_documents"][0].startswith("직무발명신고서") and "1차 소속기관" in d["applicant_name_rule"], str(d)[:160]))
+    await step(s, "등록보상금 배분", "calculate_registration_compensation",
+               {"right_type": "patent", "inventor_shares": [{"name": "홍길동", "share_rate": 0.6}, {"name": "김연구", "share_rate": 0.4}]},
+               lambda e, d: ok(not e and d["total_compensation_krw"] == 500_000 and d["payment_table"][1]["compensation_krw"] == 200_000, str(d)[:160]))
+    await step(s, "처분 방식 (전용·입찰)", "plan_national_disposal",
+               {"disposal_type": "exclusive", "bid_date": "2026-12-31", "contract_start_date": "2027-01-15", "patent_expiry_date": "2030-06-30"},
+               lambda e, d: ok(not e and d["method"].startswith("경쟁입찰") and d["bid_notice"]["notice_deadline"] == "2026-12-01"
+                               and d["contract_term"]["latest_end_date"] == "2030-06-30", str(d)[:160]))
+    await step(s, "실시료 예정가격", "calculate_royalty_estimate",
+               {"annual_factory_prices_krw": [10_000, 12_000, 14_000], "share_rate": 0.5, "annual_sales_quantities": [1_000, 2_000, 3_000]},
+               lambda e, d: ok(not e and d["estimated_price_krw"] == 1_080_000, str(d)[:160]))
+    await step(s, "기본율 범위 밖 차단", "calculate_royalty_estimate",
+               {"annual_factory_prices_krw": [10_000], "share_rate": 0.5, "base_rate": 0.05},
+               lambda e, d: ok(e and "4% 이하" in str(d), str(d)[:160]))
+    await step(s, "수탁기관 분기 보고", "get_trustee_obligations", {"as_of": "2026-11-22", "disposal_income_krw": 10_000_000},
+               lambda e, d: ok(not e and d["quarterly_reports"][0]["report_due"] == "2027-01-15"
+                               and d["contribution_compensation"]["upper_bound_krw"] == 1_500_000, str(d)[:160]))
+    await step(s, "심결 패소 대응", "guide_national_dispute", {"case_type": "trial", "trial_lost": True},
+               lambda e, d: ok(not e and any("30일 이내" in x for x in d["steps"]), str(d)[:160]))
+    await step(s, "보유 특허 연차료 일괄", "check_portfolio_annuities",
+               {"as_of": "2026-11-22", "patents": [
+                   {"patent_id": "A", "registration_date": "2023-08-01", "application_date": "2021-01-01"},
+                   {"patent_id": "B", "registration_date": "2024-06-01", "application_date": "2022-01-01"}]},
+               lambda e, d: ok(not e and d["patents"][0]["patent_id"] == "A" and d["patents"][0]["category"] == "추가납부기간", str(d)[:160]))
+
     # 12. 근거 부족·불완전 입력에서 답변이 과도하게 단정되지 않는지 확인
     s = "12. 답변 품질"
     for outlook in (None, "향후 현장 검증을 추진할 예정이다."):
@@ -291,13 +320,13 @@ async def http_session() -> List[Result]:
                 await session.initialize()
                 n = len((await session.list_tools()).tools)
                 _, data = await call(session, "calculate_patent_term", {"application_date": "2010-06-30"})
-                results.append(("11. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 26 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
+                results.append(("13. HTTP 배포", "토큰 인증 후 호출", "PASS" if n == 32 and data["expiry_date"] == "2030-06-30" else "FAIL", f"도구 {n}개"))
         r = httpx.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
                        headers={"accept": "application/json, text/event-stream"}, trust_env=False)
-        results.append(("11. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))
+        results.append(("13. HTTP 배포", "토큰 없이 거부", "PASS" if r.status_code == 401 else "FAIL", f"HTTP {r.status_code}"))
         bad = subprocess.run([sys.executable, "-m", "patent_law_mcp.server", "--transport", "streamable-http", "--host", "0.0.0.0"],
                              env={k: v for k, v in env.items() if k != "PATENT_LAW_MCP_TOKEN"}, capture_output=True, text=True, timeout=20)
-        results.append(("11. HTTP 배포", "토큰 없는 외부 바인딩 거부", "PASS" if bad.returncode != 0 and "PATENT_LAW_MCP_TOKEN" in bad.stderr else "FAIL", ""))
+        results.append(("13. HTTP 배포", "토큰 없는 외부 바인딩 거부", "PASS" if bad.returncode != 0 and "PATENT_LAW_MCP_TOKEN" in bad.stderr else "FAIL", ""))
     finally:
         proc.terminate()
         proc.wait(timeout=10)
@@ -312,7 +341,7 @@ def main() -> int:
     try:
         results += asyncio.run(http_session())
     except Exception as e:
-        results.append(("11. HTTP 배포", "HTTP 시나리오 실행", "FAIL", type(e).__name__))
+        results.append(("13. HTTP 배포", "HTTP 시나리오 실행", "FAIL", type(e).__name__))
     width = max(len(r[1]) for r in results)
     for scenario, name, status, note in results:
         print(f"{status:4}  {scenario:<14} {name:<{width}}  {note}")
