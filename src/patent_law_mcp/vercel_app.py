@@ -21,6 +21,7 @@ if os.environ.get("VERCEL"):  # Vercel이 자동으로 넣는 변수. 함수 파
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager  # noqa: E402
 from mcp.server.transport_security import TransportSecuritySettings  # noqa: E402
 
+from patent_law_mcp.config import request_kipris_key  # noqa: E402
 from patent_law_mcp.http_app import BearerAuthMiddleware  # noqa: E402
 from patent_law_mcp.server import DISPLAY_NAME, mcp  # noqa: E402
 
@@ -86,9 +87,15 @@ async def mcp_app(scope, receive, send):
     if path not in MCP_PATHS:
         await _send_json(send, 404, {"error": "not found", "mcp_endpoint": "/mcp"})
         return
-    manager = StreamableHTTPSessionManager(app=mcp._mcp_server, json_response=True, stateless=True, security_settings=_SECURITY)
-    async with manager.run():
-        await manager.handle_request(scope, receive, send)
+    # 사용자가 커넥터 요청 헤더(x-api-key)로 보낸 본인 KIPRIS 키는 이 요청 처리 동안만 쓴다 (저장·기록하지 않음)
+    user_key = dict(scope.get("headers") or []).get(b"x-api-key", b"").decode("latin-1").strip()
+    token = request_kipris_key.set(user_key[:200])
+    try:
+        manager = StreamableHTTPSessionManager(app=mcp._mcp_server, json_response=True, stateless=True, security_settings=_SECURITY)
+        async with manager.run():
+            await manager.handle_request(scope, receive, send)
+    finally:
+        request_kipris_key.reset(token)
 
 
 def _public_status_or(protected):

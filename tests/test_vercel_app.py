@@ -76,3 +76,37 @@ def test_landing_page_lists_every_tool_exactly():
     on_page = set(re.findall(r"<code>([a-z_]+)</code>", html))
     registered = {t.name for t in asyncio.run(mcp.list_tools())}
     assert on_page == registered, (registered - on_page, on_page - registered)
+
+
+def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
+    # 서버에 KIPRIS 키가 없어도, 사용자가 커넥터 요청 헤더 x-api-key로 보낸 본인 키로 검색한다 (그 요청에만)
+    from patent_law_mcp import net
+    from patent_law_mcp.config import request_kipris_key
+
+    monkeypatch.setenv("PATENT_LAW_MCP_CACHE", "off")
+    seen = []
+
+    class Resp:
+        status_code = 200
+        text = "<response><header><resultCode>00</resultCode></header><body><items></items><count><totalCount>0</totalCount></count></body></response>"
+
+        def raise_for_status(self):
+            return None
+
+    def fake_get(url, **kw):
+        seen.append((kw.get("params") or {}).get("ServiceKey"))
+        return Resp()
+
+    monkeypatch.setattr(net, "http_get", fake_get)
+    c = _client(monkeypatch, PATENT_LAW_MCP_ALLOW_ANONYMOUS="1")
+    call = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search_patents", "arguments": {"query": "떡"}}}
+
+    no_key = c.post("/mcp", json=call, headers=HDR).json()["result"]
+    assert "x-api-key" in json.dumps(no_key, ensure_ascii=False) and seen == []
+
+    c.post("/mcp", json=call, headers={**HDR, "x-api-key": "user-key-123"})
+    assert seen == ["user-key-123"]
+    assert request_kipris_key.get() == ""  # 요청이 끝나면 비워짐
+
+    c.post("/mcp", json=call, headers=HDR)  # 다음 사용자의 요청에는 남지 않음
+    assert seen == ["user-key-123"]

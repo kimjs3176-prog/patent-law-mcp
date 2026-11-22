@@ -335,7 +335,9 @@ def fetch_patent_smart(
     if not data:
         next_steps = []
         if num.kind == "application":
-            next_steps.append("등록번호(10-XXXXXXX)나 공개번호로 다시 조회하거나, KIPRIS_API_KEY를 설정하십시오.")
+            next_steps.append("등록번호(10-XXXXXXX)나 공개번호로 다시 조회하십시오 (kipris.or.kr에서 출원번호로 검색하면 확인 가능).")
+            if not key:
+                next_steps.append("출원번호 조회에는 KIPRIS Plus 인증키가 필요합니다: 원격 커넥터는 요청 헤더 x-api-key, 로컬 실행은 환경변수 KIPRIS_API_KEY.")
             next_steps.append("입력한 13자리 번호가 공개번호라면 number_type='publication'으로 지정하십시오.")
         next_steps.append("KIPRIS 또는 공보 텍스트를 복사해 analyze_patent_document에 붙여넣을 수 있습니다.")
         return {
