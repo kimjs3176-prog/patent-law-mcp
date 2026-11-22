@@ -105,48 +105,79 @@ def _parse_google(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"total_count": total if isinstance(total, int) else None, "items": items}
 
 
-def search_google_patents(query: str, applicant: Optional[str], year: int, page: int, page_size: int) -> Dict[str, Any]:
-    """Google Patents 공개 검색 (한국 문헌). 공식 API가 아니며 접속 제한이 걸리면 found=False."""
-    q = {"q": query, "country": "KR", "num": str(min(max(page_size, 10), 100)), "page": str(page - 1)}
-    if applicant:
-        q["assignee"] = applicant
-    # 날짜 조건(after/before)은 Google 쪽에서 오류가 나 보내지 않고, 받은 결과에서 출원일 연도로 거른다
+GOOGLE_PAGE = 10  # Google Patents 기본 쪽 크기. page_size가 이보다 작으면 이 단위로 받아 잘라 쓴다
+
+
+def _google_fetch_page(q: Dict[str, str]) -> Dict[str, Any]:
+    """Google Patents 한 쪽을 받아 해석한다. 실패하면 {'error': ...}."""
     url_param = "&".join(f"{k}={urllib.parse.quote(v)}" for k, v in q.items())
-    cache_key = f"google:{url_param}:year={year}"
-    if (hit := cache.get("search", cache_key, ttl_hours=24)):
-        return hit
     resp = None
     for attempt in range(2):  # 429·503(일시 제한)은 잠시 뒤 한 번만 다시 시도
         try:
             resp = net.http_get(GOOGLE_QUERY_URL, params={"url": url_param, "exp": ""}, timeout=settings.request_timeout_seconds)
         except httpx.HTTPError as e:
-            return {"found": False, "error": f"Google Patents 접속 실패 ({type(e).__name__})"}
+            return {"error": f"Google Patents 접속 실패 ({type(e).__name__})"}
         if resp.status_code not in (429, 503) or attempt == 1:
             break
         time.sleep(1.5)
     if resp.status_code != 200:
-        return {"found": False, "error": f"Google Patents 검색이 거부됐습니다 (HTTP {resp.status_code}; 429·503은 자동 접속 제한)"}
+        return {"error": f"Google Patents 검색이 거부됐습니다 (HTTP {resp.status_code}; 429·503은 자동 접속 제한)"}
     try:
-        parsed = _parse_google(json.loads(resp.text))
+        return _parse_google(json.loads(resp.text))
     except (ValueError, AttributeError, TypeError):
-        return {"found": False, "error": "Google Patents 검색 응답을 해석하지 못했습니다 (화면 구조 변경 가능)."}
-    items = parsed["items"]
+        return {"error": "Google Patents 검색 응답을 해석하지 못했습니다 (화면 구조 변경 가능)."}
+
+
+def search_google_patents(
+    query: str, applicant: Optional[str], year: int, page: int, page_size: int, refresh: bool = False
+) -> Dict[str, Any]:
+    """Google Patents 공개 검색 (한국 문헌). 공식 API가 아니며 접속 제한이 걸리면 found=False."""
+    base = {"q": query, "country": "KR"}
+    if applicant:
+        base["assignee"] = applicant
+    # 날짜 조건(after/before)은 Google 쪽에서 오류가 나 보내지 않고, 받은 결과에서 출원일 연도로 거른다
+    cache_key = "google:" + "&".join(f"{k}={v}" for k, v in sorted(base.items())) + f":year={year}:page={page}:size={page_size}"
+    if not refresh and (hit := cache.get("search", cache_key, ttl_hours=24)):
+        return hit
+
+    # 요청한 쪽(page, page_size)이 Google 쪽 경계와 어긋나도 빠짐·중복 없이 잘라 쓴다
+    g_size = page_size if page_size >= GOOGLE_PAGE else GOOGLE_PAGE
+    start = (page - 1) * page_size
+    first_page, offset = divmod(start, g_size)
+    pages_needed = 2 if offset + page_size > g_size else 1
+    items: List[Dict[str, Any]] = []
+    total = None
+    for n in range(pages_needed):
+        got = _google_fetch_page({**base, "num": str(min(g_size, 100)), "page": str(first_page + n)})
+        if "error" in got:
+            if n == 0:
+                return {"found": False, "error": got["error"]}
+            break  # 둘째 쪽이 막히면 첫 쪽 결과만 쓴다
+        total = got["total_count"] if total is None else total
+        items += got["items"]
+    items = items[offset:offset + page_size]
     if year:
         items = [x for x in items if x["filing_date"].startswith(str(year))]
-    result = {
+    result: Dict[str, Any] = {
         "found": bool(items),
         "source": "Google Patents 공개 검색 (비공식, KIPRIS 인증키 없음)",
-        "search_mode": "키워드" + (" + 출원인(assignee)" if applicant else "") + (f" + 출원연도 {year} (받은 결과 중 출원일로 거름)" if year else ""),
+        "search_mode": "키워드" + (" + 출원인(assignee)" if applicant else "") + (f" + 출원연도 {year} (이 쪽 결과 중 출원일로 거름)" if year else ""),
         "query": query,
         "applicant": applicant,
         "page": page,
-        "total_count": parsed["total_count"],
-        "results": items[:page_size],
+        "total_count": None if year else total,
+        "results": items,
         "note": (
             "Google Patents가 준 순서·값 그대로입니다. 공식 KIPRIS 결과와 범위·순서가 다를 수 있고 권리 상태는 포함하지 않습니다. "
             "등록·공개번호로 fetch_patent_smart를 호출하면 상세를 번호 검증과 함께 확인할 수 있습니다."
         ),
     }
+    if year:
+        result["year_filter_note"] = (
+            f"출원연도 {year}는 Google 검색 조건이 아니라 이 쪽({page}쪽) 결과 안에서만 거른 것입니다. "
+            f"검색 전체 건수(필터 전 {total if total is not None else '미상'}건)의 다른 쪽에 {year}년 출원이 더 있을 수 있으니, "
+            "결과가 없거나 적으면 다음 쪽을 보거나 검색어에 연도·출원인을 더하십시오."
+        )
     if result["found"]:
         cache.put("search", cache_key, result)
     return result
@@ -174,7 +205,7 @@ def search_patents(
     """
     key = settings.kipris_api_key
     if not key:
-        fallback = search_google_patents(query, applicant, year, page, page_size)
+        fallback = search_google_patents(query, applicant, year, page, page_size, refresh)
         if fallback.get("found") or "error" not in fallback:
             return fallback
         return {
@@ -199,18 +230,26 @@ def search_patents(
     cache_key = f"{op}:" + "&".join(f"{k}={v}" for k, v in sorted(params.items()) if k != "ServiceKey")
     if not refresh and (hit := cache.get("search", cache_key, ttl_hours=24)):
         return hit
+    kipris_error = None
     try:
         resp = net.http_get(f"{KIPRIS_SEARCH_BASE}/{op}", params=params, timeout=settings.request_timeout_seconds)
+        if resp.status_code != 200:
+            kipris_error = f"KIPRIS 응답 오류 (HTTP {resp.status_code})"
+        else:
+            parsed = _parse_items(resp.content)
     except httpx.HTTPError as e:
-        return {"found": False, "error": f"KIPRIS 접속 실패 ({type(e).__name__})"}
-    if resp.status_code != 200:
-        return {"found": False, "error": f"KIPRIS 응답 오류 (HTTP {resp.status_code})"}
-    try:
-        parsed = _parse_items(resp.content)
+        kipris_error = f"KIPRIS 접속 실패 ({type(e).__name__})"
     except ET.ParseError:
-        return {"found": False, "error": "KIPRIS 응답을 XML로 해석하지 못했습니다."}
+        kipris_error = "KIPRIS 응답을 XML로 해석하지 못했습니다."
     except LookupError as e:
-        return {"found": False, "error": f"KIPRIS: {e}"}
+        kipris_error = f"KIPRIS: {e}"
+    if kipris_error:
+        # 인증키 한도 초과·키 오류·장애 때도 검색이 끊기지 않도록 Google Patents로 대신한다
+        fallback = search_google_patents(query, applicant, year, page, page_size, refresh)
+        if fallback.get("found") or "error" not in fallback:
+            return {**fallback, "kipris_error": kipris_error,
+                    "source": fallback["source"].replace("KIPRIS 인증키 없음", "KIPRIS 실패로 대체")}
+        return {"found": False, "error": f"{kipris_error}. Google Patents 대체 검색도 실패: {fallback['error']}", "how_to": NO_KEY_HELP}
 
     result = {
         "found": bool(parsed["items"]),

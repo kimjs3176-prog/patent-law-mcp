@@ -168,7 +168,7 @@ def compare_source(
         "id": source["id"],
         "name": source["name"],
         "status": status,
-        "baseline_version": {k: base.get(k) for k in ("seq", "effective_date")} if base else None,
+        "baseline_version": {k: base.get(k) for k in ("seq", "effective_date", "verified_on")} if base else None,
         "current_version": version,
         "version_changed": version_changed,
         "findings": findings,
@@ -218,11 +218,16 @@ def update_baseline(
             raise LawSourceError(f"{s['name']}: 감시 조문 {', '.join(missing)}이(가) 원문에 없습니다. legal_sources.yaml을 먼저 고치십시오.")
         baseline["sources"][s["id"]] = {
             "name": s["name"],
+            "verified_on": date.today().isoformat(),
             **version,
             "articles": {a: {"sha256": _sha(articles[a]), "text": articles[a]} for a in (s.get("articles") or {})},
         }
         updated.append(s["name"])
-    baseline["verified_on"] = date.today().isoformat()
+    # 전체 대조일은 가장 오래 대조한 법령의 날짜 — --only로 일부만 갱신해도 나머지가 오늘 대조한 것처럼 보이지 않게
+    old_global = baseline.get("verified_on")
+    per_source = [v.get("verified_on") or old_global for v in baseline["sources"].values()]
+    per_source = [d for d in per_source if d]
+    baseline["verified_on"] = min(per_source) if per_source else date.today().isoformat()
     path.write_text(json.dumps(baseline, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return {"updated": updated, "verified_on": baseline["verified_on"]}
 

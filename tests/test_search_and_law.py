@@ -100,3 +100,57 @@ def test_http_client_logs_do_not_expose_query_keys():
     from patent_law_mcp import net  # noqa: F401  (import 시 로거 수준 설정)
 
     assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+
+
+def _google_page(start, n=10):
+    rows = ",".join(
+        '{"patent": {"title": "특허 %d", "publication_number": "KR10%07dB1", "filing_date": "%d-01-01"}}' % (i, 1000000 + i, 2010 if i % 2 else 2011)
+        for i in range(start, start + n)
+    )
+    return '{"results": {"total_num_results": 100, "cluster": [{"result": [%s]}]}}' % rows
+
+
+def test_google_paging_has_no_gaps_with_small_page_size(fake_http, monkeypatch):
+    # 리뷰 1: page_size가 10보다 작아도 쪽을 넘길 때 빠지는 결과가 없어야 한다
+    pages = {}
+
+    def handler(url, **kw):
+        import httpx
+        page = int(kw["params"]["url"].split("page=")[1].split("&")[0])
+        pages[page] = pages.get(page, 0) + 1
+        return httpx.Response(200, text=_google_page(page * 10), request=httpx.Request("GET", url))
+
+    from patent_law_mcp import net
+    monkeypatch.setattr(net, "http_get", handler)
+    titles = []
+    for p in (1, 2, 3):
+        titles += [x["title"] for x in search_patents("떡", page=p, page_size=4)["results"]]
+    assert titles == [f"특허 {i}" for i in range(12)]  # 0..11 연속, 빠짐·중복 없음
+    assert set(pages) == {0, 1}  # 3쪽(8~11)은 Google 0·1쪽에 걸쳐 받음
+
+
+def test_google_refresh_bypasses_cache(fake_http, monkeypatch, tmp_path):
+    # 리뷰 2: refresh=True면 Google 결과도 캐시를 무시한다
+    monkeypatch.setenv("PATENT_LAW_MCP_CACHE", str(tmp_path / "c.sqlite3"))
+    fake_http.routes["patents.google.com/xhr/query"] = (200, GOOGLE_JSON)
+    search_patents("떡")
+    search_patents("떡")
+    assert len(fake_http.calls) == 1
+    search_patents("떡", refresh=True)
+    assert len(fake_http.calls) == 2
+
+
+def test_google_year_filter_is_honest(fake_http):
+    # 리뷰 3: 연도 거름은 받은 쪽 안에서만 — 전체 건수를 그대로 내지 않고 다른 쪽에 더 있을 수 있다고 알린다
+    fake_http.routes["patents.google.com/xhr/query"] = (200, GOOGLE_JSON)
+    r = search_patents("떡", year=2010)
+    assert r["total_count"] is None and "다른 쪽" in r["year_filter_note"]
+
+
+def test_kipris_failure_falls_back_to_google(fake_http, monkeypatch):
+    # 리뷰 4: 본인 키 한도 초과 등으로 KIPRIS가 거부해도 Google로 대신 검색한다
+    monkeypatch.setenv("KIPRIS_API_KEY", "quota-exceeded")
+    fake_http.routes["getWordSearch"] = (200, "<response><header><resultCode>22</resultCode><resultMsg>LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS</resultMsg></header></response>")
+    fake_http.routes["patents.google.com/xhr/query"] = (200, GOOGLE_JSON)
+    r = search_patents("떡")
+    assert r["found"] is True and "KIPRIS 실패로 대체" in r["source"] and "EXCEEDS" in r["kipris_error"]

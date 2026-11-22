@@ -119,3 +119,11 @@ def test_user_kipris_key_from_connector_header_is_used_per_request(monkeypatch):
 
     c.post("/mcp", json=call, headers=HDR)  # 다음 사용자의 요청에는 남지 않음
     assert seen == ["user-key-123"]
+
+
+def test_root_responses_vary_on_accept(monkeypatch):
+    # 리뷰 5: '/'는 Accept에 따라 HTML·JSON이 갈리므로 캐시가 섞지 않도록 Vary: Accept
+    c = _client(monkeypatch, PATENT_LAW_MCP_ALLOW_ANONYMOUS="1")
+    assert c.get("/", headers={"Accept": "text/html"}).headers["vary"] == "Accept"
+    j = c.get("/")
+    assert j.headers["vary"] == "Accept" and j.headers["cache-control"] == "no-store"
