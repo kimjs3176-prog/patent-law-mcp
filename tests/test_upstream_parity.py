@@ -10,6 +10,7 @@ import re
 from patent_law_mcp.upstream.gazette_holders import holders_from_text
 from patent_law_mcp.upstream.summary_grounding import GroundingSource as S
 from patent_law_mcp.upstream.summary_grounding import source_figures, strip_unsupported_effect_figures as strip
+from patent_law_mcp.upstream.trl_consistency import TrlBand, describe_trl_from_stage, detect_summary_maturity, reconcile_trl
 
 
 def summary_of(body, section="발명요약 및 특징"):
@@ -73,6 +74,85 @@ def sec(body):
 
 
 MARKER = "## 상용화전망\n본 발명은 유효 마커 발굴 및 실험실 검증을 완료하고 표준화 프로토콜을 정립하였다. 단기적으로는 기술이전을 추진한다.\n"
+
+
+# ---------------------------------------------------------------- trlConsistency / trlStage / trlReasonStage
+def sec(body):
+    return f"## 기술분야\n농업용 미생물 제제 기술이다.\n\n## 상용화전망\n{body}\n"
+
+
+def test_lab_statement_lowers_trl():
+    r = reconcile_trl(8, "## 상용화전망 본 기술은 현재 실험실 수준의 검증 단계로, 양산 공정은 미확보다.")
+    assert r["trl"] == 4 and r["changed"] is True
+
+
+def test_lab_with_inserted_word():
+    s = ("## 상용화 전망\n본 발명의 기술완성도는 특정 침지 온도 및 시간 조건에서 성분 증가를 확인한 실험실 개발 단계이며 "
+         "대용량 가공 시 열전달 불균일 문제를 해결하는 스케일업 실증이 요구된다. 단기적으로는 기술이전이 유력하다.")
+    r = reconcile_trl(8, s)
+    assert r["trl"] == 4 and r["band"].label == "실험실"
+
+
+def test_mass_production_raises_trl():
+    assert reconcile_trl(4, "## 상용화전망 기존 설비로 즉시 구현 가능한 양산 준비 단계다.")["trl"] == 7
+
+
+def test_beyond_lab_is_pilot():
+    assert reconcile_trl(8, "## 상용화전망 실험실 수준을 넘어 파일럿 단계에서 검증되었다.")["trl"] == 6
+
+
+def test_in_range_unchanged():
+    assert reconcile_trl(5, "## 상용화전망 시작품 단계로 현장 검증이 필요하다.")["changed"] is False
+
+
+def test_order_independent():
+    a = sec("본 기술은 실험실 검증과 파일럿 실증을 거쳐 양산 준비 단계에 있다.")
+    b = sec("본 기술은 현재 양산 준비 단계에 있으며, 실험실 검증과 파일럿 실증을 거쳤다.")
+    assert detect_summary_maturity(a).label == detect_summary_maturity(b).label == "양산준비"
+    assert reconcile_trl(4, a)["trl"] == reconcile_trl(4, b)["trl"] == 7
+
+
+def test_future_stages_not_counted():
+    s = sec("현재 실험실 수준의 검증을 완료했으며, 2027년 파일럿 실증을 목표로 하고 양산 준비는 2029년 예정이다.")
+    assert detect_summary_maturity(s).label == "실험실"
+    assert reconcile_trl(7, s)["trl"] == 4
+
+
+def test_transition_vs_current():
+    assert detect_summary_maturity(sec("파일럿 실증 이후 양산 준비 단계로 전환할 계획이다.")).label == "파일럿·실증"
+    assert detect_summary_maturity(sec("시작품 단계로 현장 검증이 필요하다.")).label == "파일럿·실증"
+
+
+def test_future_path_and_competitors_excluded():
+    assert detect_summary_maturity(sec("단기(1~2년) 내 파일럿 실증을 거쳐 중기(3~5년)에는 양산 체계를 구축할 계획이다.")) is None
+    assert detect_summary_maturity(sec("현재 실험실 단계이며, 경쟁 기술은 이미 상용 단계에 있다.")).label == "실험실"
+
+
+def test_no_section_no_judgement():
+    no_section = "## 기술분야\n본 기술은 양산 준비 단계에 있다.\n\n## 발명요약 및 특징\n실험실 수준의 결과다.\n"
+    assert detect_summary_maturity(no_section) is None
+    assert reconcile_trl(3, no_section) == {"trl": 3, "changed": False, "band": None}
+
+
+MARKER = "## 상용화전망\n본 발명은 유효 마커 발굴 및 실험실 검증을 완료하고 표준화 프로토콜을 정립하였다. 단기적으로는 기술이전을 추진한다.\n"
+
+
+def test_reason_states_summary_stage():
+    r = reconcile_trl(6, MARKER)
+    assert r["trl"] == 4 and r["changed"] is True
+    reason = describe_trl_from_stage(r["trl"], r["band"])
+    assert reason == ("요약서 상용화전망이 기술완성도를 '실험실' 단계로 서술하고 있어 TRL 4로 판단되며, "
+                      "모사 환경의 통합 실시예가 보강되면 5단계로 진입 가능하다.")
+    assert "수치 데이터" not in reason
+
+
+def test_reason_josa_and_single_trl_number():
+    band = TrlBand(5, 6, "파일럿·실증")
+    assert "TRL 6으로 판단되며, 실환경 운영 데이터가" in describe_trl_from_stage(6, band)
+    assert "TRL 5로 판단되며, 파일럿·시작품 단계의" in describe_trl_from_stage(5, band)
+    assert "TRL 3으로 판단되며" in describe_trl_from_stage(3, TrlBand(3, 4, "실험실"))
+    for t in range(1, 10):
+        assert [int(n) for n in re.findall(r"TRL\s*(\d)", describe_trl_from_stage(t, band))] == [t]
 
 
 # ---------------------------------------------------------------- patent-video-skill

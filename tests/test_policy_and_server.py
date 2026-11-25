@@ -59,7 +59,7 @@ EXPECTED_TOOLS = {
     # 원문 확보
     "search_patents", "fetch_patent_smart", "search_laws", "get_law_article", "parse_raw_patent_text",
     # 요약 근거·권리범위
-    "ground_summary_figures", "verify_tech_transfer_scope_match",
+    "ground_summary_figures", "verify_tech_transfer_scope_match", "evaluate_patent_commercialization",
 }
 REMOVED_TOOLS = {  # 2026-11-22 도구 정리로 삭제
     "summarize_patent", "analyze_patent_document", "inspect_and_summarize_by_appno", "ground_patent_applications",

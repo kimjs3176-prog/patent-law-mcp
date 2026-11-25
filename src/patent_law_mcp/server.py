@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 
 from patent_law_mcp.legal_sources import check_legal_source_updates
 from patent_law_mcp.policies.policy_manager import get_policy_table
+from patent_law_mcp.tools.commercialization import evaluate_patent_commercialization
 from patent_law_mcp.tools.grounding import ground_summary_figures
 from patent_law_mcp.tools.claims_practice import verify_tech_transfer_scope_match
 from patent_law_mcp.tools.contract_practice import design_licensing_terms, review_licensing_contract
@@ -240,7 +241,14 @@ register(
     "붙여넣은 공보·명세서 텍스트에서 명칭·출원/등록/공개번호·출원인·IPC·초록·청구항 분해 (찾지 못한 항목은 warnings로 안내)",
 )
 
-# 4. 요약 근거 확인·권리범위 대조 (기술이전 상담 자료)
+# 4. 기술사업화 평가·요약 근거 확인·권리범위 대조 (기술이전 상담 자료)
+register(
+    evaluate_patent_commercialization,
+    "evaluate_patent_commercialization",
+    "특허 기술사업화 평가: 기술성·시장성·사업성 점수(55~95)·총점·TRL과 근거를 고정 양식 보고서로 작성 "
+    "(patent-summary-wizard 평가 모델). checked_items 없이 부르면 체크리스트를 돌려주고, Claude가 원문으로 확인한 항목과 근거를 넣으면 "
+    "점수 합산·V-RAY 사업성 보정·결론 문장을 도구가 계산합니다. 결과의 report_markdown을 그대로 보여 주십시오",
+)
 register(
     ground_summary_figures,
     "ground_summary_figures",
