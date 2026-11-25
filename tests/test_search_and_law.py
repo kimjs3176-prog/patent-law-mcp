@@ -84,7 +84,10 @@ def test_get_law_article_picks_exact_law_and_formats(fake_http, monkeypatch):
     assert "제6장" not in r["text"]
     service_params = fake_http.calls[1][1]
     assert service_params["MST"] == "222" and service_params["JO"] == "010000" and service_params["OC"] == "me"
-    assert r["link"] == "https://www.law.go.kr/DRF/lawService.do?MST=222"
+    # API 상세링크에는 서버 OC가 들어 있으므로 응답에는 OC 없는 공개 원문 주소만 내보낸다
+    assert r["link"] == "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=222"
+    assert "OC=" not in str(r) and "me&" not in str(r)
+    assert all("OC=" not in m.get("link", "") for m in search_laws("특허법")["results"])
 
 
 def test_law_api_error_message(fake_http, monkeypatch):
