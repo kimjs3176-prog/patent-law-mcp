@@ -104,3 +104,17 @@ def test_broken_or_honorific_reason_falls_back():
     assert "기본 문구" in r["notes"][0] and "기술성" in r["notes"][0]
     assert not r["reasons"]["technology"].startswith("기술성은 종합하면")
     assert "니다" not in r["reasons"]["technology"]
+
+
+def test_cpc_used_when_ipc_missing_and_single_char_evidence():
+    r = ev("10-1099619", checked_items=[H(id="M2", evidence="떡")], trl=8, cpc_codes=["A23L7/10", "Y02W10/20"], as_of=AS_OF)
+    assert any(h["id"] == "M1" for h in r["checklist_breakdown"]["market"])  # 식품 CPC로 자동 판정
+    assert r["vray"]["parts"]["breadth"] == 0.33  # Y 섹션 태깅은 제외
+    assert any("CPC" in n for n in r["notes"])
+
+
+def test_fallback_josa_matches_batchim():
+    t = cs.make_technology_fallback(72, 10, False, False)
+    assert "실시예는 확인되지만" in t and "실시예은" not in t
+    assert "구성과 원리" in cs.make_technology_fallback(65, 0, False, False)
+    assert "근거가 폭넓게" in cs.make_technology_fallback(90, 0, True, False)

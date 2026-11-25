@@ -16,6 +16,7 @@ JS의 Math.round는 반올림(0.5 올림)이라 _js_round로 맞춘다.
 - 기본 문구에도 점수 구간 결론 문장을 붙여 등급과 결론이 항상 일치
 - 점수·TRL 문장을 지운 뒤 문장이 깨지거나 합쇼체이면 기본 문구로 대체 (원본은 지우기 전에만 검사)
 - 종합 의견 기본 문구에서 기술·시장이 모두 약할 때 '~지만'으로 잇지 않음
+- 기술성 기본 문구의 조사를 앞 단어 받침에 맞춤 ('실시예은' → '실시예는')
 """
 
 import math
@@ -336,6 +337,14 @@ def strip_duration_mentions(text: str) -> str:
 
 
 # ---------------------------------------------------------------- 기본 문구 (원본 make*Fallback)
+def josa(word: str, with_batchim: str, without: str) -> str:
+    """앞 단어의 받침에 맞는 조사 (원본은 '이/은'을 고정해 '실시예은'처럼 틀렸다)."""
+    last = word.strip()[-1:] if word.strip() else ""
+    if "가" <= last <= "힣":
+        return with_batchim if (ord(last) - 0xAC00) % 28 else without
+    return with_batchim
+
+
 def make_technology_fallback(score: int, claims_count: int, has_data: bool, multi_ipc: bool) -> str:
     claim_part = (
         f"청구항 {claims_count}건의 권리 범위" if claims_count >= 10 else f"청구항 {claims_count}건" if claims_count >= 5 else "제한된 청구항 구성"
@@ -344,13 +353,13 @@ def make_technology_fallback(score: int, claims_count: int, has_data: bool, mult
     ipc_part = "와 복수 IPC 적용성" if multi_ipc else ""
     evidence = f"{claim_part}, {data_part}{ipc_part}"
     if score >= 85:
-        return f"{evidence}이 폭넓게 확인돼 기술 완성도가 분명히 드러나며, 이러한 근거가 결합돼 높은 평가로 이어진다. 다만 후속 비교 실험과 재현 데이터가 더해지면 권리 범위와 진보성을 한층 견고하게 다질 수 있다."
+        return f"{evidence}{josa(evidence, '이', '가')} 폭넓게 확인돼 기술 완성도가 분명히 드러나며, 이러한 근거가 결합돼 높은 평가로 이어진다. 다만 후속 비교 실험과 재현 데이터가 더해지면 권리 범위와 진보성을 한층 견고하게 다질 수 있다."
     if score >= 78:
-        return f"{evidence}이 함께 확인돼 기술적 완결성이 어느 정도 갖춰진 편이며, 그 흐름이 양호한 평가로 이어진다. 다만 선행기술과의 차별성을 더 선명히 보여줄 비교 실험과 재현 데이터가 보완되면 상위 점수대까지 노려볼 수 있다."
+        return f"{evidence}{josa(evidence, '이', '가')} 함께 확인돼 기술적 완결성이 어느 정도 갖춰진 편이며, 그 흐름이 양호한 평가로 이어진다. 다만 선행기술과의 차별성을 더 선명히 보여줄 비교 실험과 재현 데이터가 보완되면 상위 점수대까지 노려볼 수 있다."
     if score >= 70:
-        return f"{evidence}은 확인되지만 차별성과 재현성을 뒷받침할 근거가 다소 제한적이라 보통 수준에 머문다. 비교예와 진보성 서술이 구체화되어야 상위 점수대로 올라설 수 있다."
+        return f"{evidence}{josa(evidence, '은', '는')} 확인되지만 차별성과 재현성을 뒷받침할 근거가 다소 제한적이라 보통 수준에 머문다. 비교예와 진보성 서술이 구체화되어야 상위 점수대로 올라설 수 있다."
     if score >= 60:
-        return f"{claim_part}과 {data_part}만으로는 기술 완성도를 단정하기 어렵다. 비교예 확보와 반복 실험, 진보성 서술 보완이 함께 이뤄져야 점수 상향을 기대할 수 있다."
+        return f"{claim_part}{josa(claim_part, '과', '와')} {data_part}만으로는 기술 완성도를 단정하기 어렵다. 비교예 확보와 반복 실험, 진보성 서술 보완이 함께 이뤄져야 점수 상향을 기대할 수 있다."
     return "청구항과 실시예의 깊이가 얕아 기술적 근거가 충분히 드러나지 않으며, 그 결과 낮은 수준에 그친다. 비교 실험, 재현 데이터, 진보성 서술이 모두 보강되어야 의미 있는 평가가 가능하다."
 
 

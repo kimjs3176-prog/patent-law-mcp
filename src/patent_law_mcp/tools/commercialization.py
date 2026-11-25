@@ -21,7 +21,7 @@ _FOOD_CLASSES = {"A01", "A21", "A22", "A23", "A24", "A47"}
 class ChecklistHit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: Annotated[str, Field(description="체크리스트 항목 ID (예: T-A1, M5, B2)")]
-    evidence: Annotated[str, Field(min_length=2, description="원문에서 이 항목을 뒷받침하는 문장·청구항 발췌 (그대로 인용)")]
+    evidence: Annotated[str, Field(min_length=1, description="원문에서 이 항목을 뒷받침하는 문장·청구항 발췌 (그대로 인용)")]
 
 
 def _rubric() -> Dict[str, Any]:
@@ -35,7 +35,7 @@ def _rubric() -> Dict[str, Any]:
             "checked_items에 {id, evidence(원문 인용)}로 넣으십시오. 추정으로 고르지 마십시오. "
             "2) trl_rules에서 충족되는 가장 높은 단계 하나를 trl로 넣으십시오. "
             "3) 근거 문장(technology_reason 등)은 writing_rules대로 쓰거나, 비우면 원본의 점수 구간별 기본 문구를 씁니다. "
-            "4) ipc_codes·filing_date·registration_number·abstract를 넣으면 IPC 항목(T-B3·M1)과 V-RAY 보정을 도구가 계산합니다."
+            "4) ipc_codes(없으면 cpc_codes)·filing_date·registration_number·abstract를 넣으면 IPC 항목(T-B3·M1)과 V-RAY 보정을 도구가 계산합니다."
         ),
         "scoring": f"각 항목 기본 {cs.BASE}점에서 가감, 상한 {cs.CAP}·하한 {cs.FLOOR}. 사업성 = 체크리스트 60% + V-RAY 지수 40%. 총점 = 기술성×0.35 + 시장성×0.35 + 사업성×0.30",
         "checklist": groups,
@@ -52,6 +52,7 @@ def evaluate_patent_commercialization(
     trl: Annotated[Optional[int], Field(ge=1, le=9)] = None,
     title: Optional[str] = None,
     ipc_codes: Optional[List[str]] = None,
+    cpc_codes: Optional[List[str]] = None,
     filing_date: Optional[str] = None,
     registration_number: Optional[str] = None,
     registration_date: Optional[str] = None,
@@ -78,6 +79,7 @@ def evaluate_patent_commercialization(
         trl: TRL 기준표에서 충족되는 가장 높은 단계 (1~9). 채점할 때 필수
         title: 발명의 명칭 (보고서 제목)
         ipc_codes: IPC 코드 목록 (첫 번째가 주분류). 넣으면 T-B3(서브클래스 2개 이상)·M1(소비재·식품·농축산물 IPC)을 자동 판정
+        cpc_codes: CPC 코드 목록. IPC가 없을 때(Google Patents 조회 결과 등) 대신 씀 — 서브클래스까지 IPC와 같은 체계, Y 섹션(태깅)은 제외
         filing_date: 출원일 (V-RAY 잔존 권리기간)
         registration_number: 등록번호 (V-RAY 권리 확정 여부)
         registration_date: 등록일
@@ -104,6 +106,10 @@ def evaluate_patent_commercialization(
     warnings: List[str] = []
     notes: List[str] = []
     ipc = [c.strip() for c in (ipc_codes or []) if c and c.strip()]
+    if not ipc and cpc_codes:
+        ipc = [c.strip() for c in cpc_codes if c and c.strip() and not c.strip().upper().startswith("Y")]
+        if ipc:
+            notes.append(f"IPC가 없어 CPC {', '.join(ipc)}를 IPC 대신 썼습니다 (서브클래스까지 같은 체계).")
 
     # ---- 체크리스트 합산
     hits: Dict[str, str] = {}
@@ -169,7 +175,7 @@ def evaluate_patent_commercialization(
     if not vray["term_known"]:
         warnings.append("출원일이 없어 V-RAY 잔존 권리기간을 20년(최대)으로 가정했습니다.")
     if not ipc:
-        warnings.append("IPC가 없어 V-RAY 적용 폭을 0으로 계산했고, T-B3·M1은 선택한 항목 그대로 반영했습니다.")
+        warnings.append("IPC·CPC가 없어 V-RAY 적용 폭을 0으로 계산했고, T-B3·M1은 선택한 항목 그대로 반영했습니다. fetch_patent_smart 결과의 ipc_codes 또는 cpc_codes를 넣으십시오.")
     scores = {
         "technology": checklist_scores["technology"],
         "market": checklist_scores["market"],
