@@ -1,5 +1,6 @@
 """기술사업화 평가 (patent-summary-wizard analyze-commercialization 포팅) 테스트"""
 
+import re
 from datetime import date
 
 from patent_law_mcp.tools.commercialization import ChecklistHit as H
@@ -83,7 +84,23 @@ def test_overclaim_softened_and_mentions_stripped():
 
 def test_fallback_texts_when_reasons_missing():
     r = ev("x", checked_items=[], trl=2, as_of=AS_OF)
-    assert r["reasons"]["market"] == cs.make_market_fallback(r["scores"]["market"]["score"])
+    assert r["reasons"]["market"].startswith(cs.make_market_fallback(r["scores"]["market"]["score"]))
     assert "TRL 2" in r["trl"]["reason"]
     for part in ("| **종합** |", "### 채점 근거", "### 사업성 보정 (V-RAY"):
         assert part in r["report_markdown"]
+
+
+def test_grade_and_conclusion_always_agree():
+    for items in ([], [H(id="T-A1", evidence="새 구성"), H(id="T-A2", evidence="실험 데이터")], [H(id=i, evidence="근거") for i in ("T-A4", "T-B4", "T-C3")]):
+        r = ev("x", checked_items=items, trl=4, as_of=AS_OF)
+        for axis, text in r["reasons"].items():
+            assert text.endswith(cs.CONCLUSIONS[r["scores"][axis]["grade"]]), (axis, text)
+            assert not re.search(r"[0-9]{2}\s*점", text)  # 기본 문구에도 점수 숫자 없음
+
+
+def test_broken_or_honorific_reason_falls_back():
+    r = ev("x", checked_items=[H(id="T-A1", evidence="새 구성")], trl=5, as_of=AS_OF,
+           technology_reason="기술성은 72점으로 평가됩니다. TRL 5 수준이며 존속기간이 8년 남아 있다.")
+    assert "기본 문구" in r["notes"][0] and "기술성" in r["notes"][0]
+    assert not r["reasons"]["technology"].startswith("기술성은 종합하면")
+    assert "니다" not in r["reasons"]["technology"]
