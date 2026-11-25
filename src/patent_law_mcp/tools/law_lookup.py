@@ -32,6 +32,15 @@ def _need_oc() -> Dict[str, Any]:
     }
 
 
+def _public_law_link(mst: Any) -> str:
+    """API가 주는 상세링크에는 서버의 OC가 들어 있어 응답에 노출되므로, OC가 없는 공개 원문 주소를 만든다."""
+    return f"{LAW_SITE}/LSW/lsInfoP.do?lsiSeq={mst}" if str(mst or "").strip() else ""
+
+
+def _public_admrul_link(seq: Any) -> str:
+    return f"{LAW_SITE}/LSW/admRulInfoP.do?admRulSeq={seq}" if str(seq or "").strip() else ""
+
+
 def _as_list(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -67,7 +76,7 @@ def _search(query: str, target: str, display: int) -> List[Dict[str, Any]]:
             "effective_date": r.get("시행일자", ""),
             "promulgation_date": r.get("공포일자", ""),
             "ministry": r.get("소관부처명", ""),
-            "link": LAW_SITE + r["법령상세링크"] if r.get("법령상세링크") else "",
+            "link": _public_law_link(r.get("법령일련번호")),
         } for r in rows]
     rows = _as_list((data.get("AdmRulSearch") or {}).get("admrul"))
     return [{
@@ -77,7 +86,7 @@ def _search(query: str, target: str, display: int) -> List[Dict[str, Any]]:
         "issued_date": r.get("발령일자", ""),
         "effective_date": r.get("시행일자", ""),
         "ministry": r.get("소관부처명", ""),
-        "link": LAW_SITE + r["행정규칙상세링크"] if r.get("행정규칙상세링크") else "",
+        "link": _public_admrul_link(r.get("행정규칙일련번호")),
     } for r in rows]
 
 
