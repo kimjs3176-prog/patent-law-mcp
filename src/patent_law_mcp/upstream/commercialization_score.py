@@ -10,6 +10,12 @@
 
 원본에서는 LLM이 체크리스트를 채점했다. MCP에서는 Claude가 충족 항목과 근거만 고르고, 점수 합산과 보정은 여기서 계산한다.
 JS의 Math.round는 반올림(0.5 올림)이라 _js_round로 맞춘다.
+
+원본과 다르게 고친 점 (산출물 점검 2026-11-25):
+- 기술성 기본 문구에서 점수 숫자('68점의')를 빼고, 60~69점 문구의 '다소 미흡'을 없앰 (등급 '보통'과 어긋남)
+- 기본 문구에도 점수 구간 결론 문장을 붙여 등급과 결론이 항상 일치
+- 점수·TRL 문장을 지운 뒤 문장이 깨지거나 합쇼체이면 기본 문구로 대체 (원본은 지우기 전에만 검사)
+- 종합 의견 기본 문구에서 기술·시장이 모두 약할 때 '~지만'으로 잇지 않음
 """
 
 import math
@@ -274,6 +280,7 @@ def normalize_reason(value: Any, fallback: str) -> str:
     return ensure_complete_sentence(value, fallback)
 
 
+HONORIFIC_RE = re.compile(r"(?:습니다|입니다|됩니다|합니다)[.!?。]?(?:\s|$)")
 _SENTENCE_RE = re.compile(r"[^.!?。]+[.!?。]+")
 
 
@@ -337,14 +344,14 @@ def make_technology_fallback(score: int, claims_count: int, has_data: bool, mult
     ipc_part = "와 복수 IPC 적용성" if multi_ipc else ""
     evidence = f"{claim_part}, {data_part}{ipc_part}"
     if score >= 85:
-        return f"{evidence}이 폭넓게 확인돼 기술 완성도가 분명히 드러나며, 이러한 근거가 결합돼 {score}점의 높은 수준으로 평가된다. 다만 후속 비교 실험과 재현 데이터가 더해지면 권리 범위와 진보성을 한층 견고하게 다질 수 있다."
+        return f"{evidence}이 폭넓게 확인돼 기술 완성도가 분명히 드러나며, 이러한 근거가 결합돼 높은 평가로 이어진다. 다만 후속 비교 실험과 재현 데이터가 더해지면 권리 범위와 진보성을 한층 견고하게 다질 수 있다."
     if score >= 78:
-        return f"{evidence}이 함께 확인돼 기술적 완결성이 어느 정도 갖춰진 편이며, 그 흐름이 {score}점 수준의 평가로 이어진다. 다만 선행기술과의 차별성을 더 선명히 보여줄 비교 실험과 재현 데이터가 보완되면 상위 점수대까지 노려볼 수 있다."
+        return f"{evidence}이 함께 확인돼 기술적 완결성이 어느 정도 갖춰진 편이며, 그 흐름이 양호한 평가로 이어진다. 다만 선행기술과의 차별성을 더 선명히 보여줄 비교 실험과 재현 데이터가 보완되면 상위 점수대까지 노려볼 수 있다."
     if score >= 70:
-        return f"{evidence}은 확인되지만 차별성과 재현성을 뒷받침할 근거가 다소 제한적이라, {score}점의 보통 수준에 머문다. 비교예와 진보성 서술이 구체화되어야 상위 점수대로 올라설 수 있다."
+        return f"{evidence}은 확인되지만 차별성과 재현성을 뒷받침할 근거가 다소 제한적이라 보통 수준에 머문다. 비교예와 진보성 서술이 구체화되어야 상위 점수대로 올라설 수 있다."
     if score >= 60:
-        return f"{claim_part}과 {data_part}만으로는 기술 완성도를 단정하기 어려워 {score}점의 다소 미흡한 수준으로 평가된다. 비교예 확보와 반복 실험, 진보성 서술 보완이 함께 이뤄져야 점수 상향을 기대할 수 있다."
-    return f"청구항과 실시예의 깊이가 얕아 기술적 근거가 충분히 드러나지 않으며, 그 결과 {score}점의 낮은 수준에 그친다. 비교 실험, 재현 데이터, 진보성 서술이 모두 보강되어야 의미 있는 평가가 가능하다."
+        return f"{claim_part}과 {data_part}만으로는 기술 완성도를 단정하기 어렵다. 비교예 확보와 반복 실험, 진보성 서술 보완이 함께 이뤄져야 점수 상향을 기대할 수 있다."
+    return "청구항과 실시예의 깊이가 얕아 기술적 근거가 충분히 드러나지 않으며, 그 결과 낮은 수준에 그친다. 비교 실험, 재현 데이터, 진보성 서술이 모두 보강되어야 의미 있는 평가가 가능하다."
 
 
 def make_market_fallback(score: int) -> str:
@@ -386,6 +393,8 @@ def make_trl_fallback(trl: int) -> str:
 
 def make_analysis_fallback(t: int, m: int, b: int) -> str:
     tech = "기술 검증 근거는 양호하고" if t >= 80 else "기술 근거는 일부 확보됐지만" if t >= 70 else "기술 근거는 보완이 필요하지만"
+    if t < 70 and m < 80:  # 둘 다 약하면 '~지만'으로 잇지 않는다
+        tech = "기술 근거는 보완이 필요하고"
     market = "시장 적용성은 기대된다" if m >= 80 else "시장 적용성은 보통이다" if m >= 70 else "시장 적용성은 더 확인해야 한다"
     action = "상용화는 적용처 검증과 이전 전략이 관건이다" if b >= 75 else "후속 실증과 수요처 검증이 필요하다"
     return f"{tech} {market}. {action}."

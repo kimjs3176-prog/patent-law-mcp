@@ -213,12 +213,16 @@ def evaluate_patent_commercialization(
     analysis_text = cs.normalize_analysis(analysis or "", cs.make_analysis_fallback(scores["technology"], scores["market"], scores["business"]))
     for axis in reasons:
         reasons[axis] = cs.strip_duration_mentions(cs.strip_score_mentions(cs.strip_trl_mentions(reasons[axis])))
+        # 점수·TRL·존속기간 문장을 지운 뒤 문장이 깨졌거나 합쇼체이면 기본 문구로 (원본은 지우기 전에만 검사)
+        if cs.AXIS_LABEL[axis] not in used_fallback and (cs.is_incomplete_sentence(reasons[axis]) or cs.HONORIFIC_RE.search(reasons[axis])):
+            reasons[axis] = fallbacks[axis]
+            used_fallback.append(cs.AXIS_LABEL[axis])
     analysis_text = cs.strip_duration_mentions(cs.strip_score_mentions(analysis_text))
+    if cs.is_incomplete_sentence(analysis_text) or cs.HONORIFIC_RE.search(analysis_text):
+        analysis_text = cs.make_analysis_fallback(scores["technology"], scores["market"], scores["business"])
 
     appended = []
     for axis in reasons:
-        if cs.AXIS_LABEL[axis] in used_fallback:
-            continue  # 원본 기본 문구는 그대로 쓴다
         r = cs.ensure_conclusion(axis, scores[axis], reasons[axis])
         reasons[axis] = r["text"]
         if r["appended"]:
