@@ -149,7 +149,7 @@ def get_law_article(
         return _need_oc()
     jo = article_code(article)
     compact_name = re.sub(r"\s+", "", law_name)
-    cache_key = f"{compact_name}:{jo}"
+    cache_key = f"v2:{compact_name}:{jo}"  # v2: OC 없는 공개 링크 (이전 캐시의 OC 포함 링크를 쓰지 않음)
     if hit := cache.get("law", cache_key, ttl_hours=24):
         return hit
     try:
